@@ -7,7 +7,12 @@
  * out in the sky so the component can fly it.
  */
 
-import { AVIA, type AviaEventKind } from '@frigat/shared/constants';
+import {
+  AVIA,
+  type AviaEventKind,
+  type AviaMode,
+  type AviaSpotId,
+} from '@frigat/shared/constants';
 
 import { divideDecimal, multiplyDecimal } from '@/lib/decimal';
 
@@ -71,7 +76,8 @@ export interface PickupSpec {
 export const PICKUPS: readonly PickupSpec[] = AVIA.events.map((e) => ({
   kind: e.kind,
   label: e.label,
-  hazard: e.kind === 'rocket',
+  // Anything that divides the multiplier is a bomb, whatever it is called.
+  hazard: e.mul < 1,
 }));
 
 export function specFor(kind: AviaEventKind): PickupSpec {
@@ -98,27 +104,63 @@ export interface PlannedEvent extends ServerEvent {
   alt: number;
 }
 
+/**
+ * The three speeds. `pace` scales the cruise speed the animation flies at; the
+ * odds of each speed are the server's (AVIA.modes in @frigat/shared).
+ */
+export const SPEEDS: ReadonlyArray<{ id: AviaMode; pace: number }> = [
+  { id: 'slow', pace: 0.6 },
+  { id: 'fast', pace: 1.1 },
+  { id: 'turbo', pace: 1.75 },
+];
+
+export function paceFor(mode: AviaMode): number {
+  return SPEEDS.find((s) => s.id === mode)?.pace ?? 1;
+}
+
+/** How long each landing spot's deck is, in world metres. */
+const SPOT_LENGTH: Record<AviaSpotId, number> = { carrier: 300, island: 240, rig: 150 };
+/** Open water between one spot and the next. */
+const SPOT_GAP = 300;
+
+export interface PlacedSpot {
+  id: AviaSpotId;
+  mul: number;
+  /** Left edge of the deck, in world metres. */
+  left: number;
+  length: number;
+}
+
 export interface FlightPlan {
   landed: boolean;
   events: PlannedEvent[];
   /** Waypoints the path runs through, strictly increasing in x. */
   points: ReadonlyArray<{ x: number; alt: number }>;
-  /** Centre of the finish carrier's deck. */
+  /** Every landing spot, in the order the plane reaches them. */
+  spots: readonly PlacedSpot[];
+  /** The spot the flight came down on; null when it ditched. */
+  spot: PlacedSpot | null;
+  /** Centre of the deck it lands on (or of the first deck, for a ditch). */
   finishX: number;
   /** Where the flight ends: wheels on the deck, or the splash short of it. */
   endX: number;
 }
 
-const { deckAltitude, planeHalfHeight, carrierLength } = GAME_CONFIG;
+const { deckAltitude, planeHalfHeight } = GAME_CONFIG;
 /** Altitude of the plane's centre when its wheels are on a deck. */
 export const ON_DECK = deckAltitude + planeHalfHeight;
 
 /**
  * Lays the server's flight out in the sky: every event where the plane will
- * meet it, then the approach — onto the finish deck when the flight landed, or
- * down into the sea just short of the carrier when it did not.
+ * meet it, then the landing spots in a row — carrier, island, oil rig. A
+ * landing overflies the spots before the one the server chose and glides onto
+ * it; a ditch sinks into the sea just short of the first.
  */
-export function planFlight(events: readonly ServerEvent[], landed: boolean): FlightPlan {
+export function planFlight(
+  events: readonly ServerEvent[],
+  landed: boolean,
+  spotId: AviaSpotId | null = null
+): FlightPlan {
   const [low, high] = GAME_CONFIG.eventAltitude;
   const planned: PlannedEvent[] = events.map((e, i) => ({
     ...e,
@@ -130,7 +172,14 @@ export function planFlight(events: readonly ServerEvent[], landed: boolean): Fli
     ? planned[planned.length - 1].x
     : GAME_CONFIG.firstEventAt - GAME_CONFIG.eventSpacing;
   const deckStart = lastX + GAME_CONFIG.approach;
-  const finishX = deckStart + carrierLength / 2;
+
+  const spots: PlacedSpot[] = [];
+  let left = deckStart;
+  for (const spot of AVIA.spots) {
+    const length = SPOT_LENGTH[spot.id];
+    spots.push({ id: spot.id, mul: spot.mul, left, length });
+    left += length + SPOT_GAP;
+  }
 
   const points: Array<{ x: number; alt: number }> = [
     { x: 0, alt: ON_DECK },
@@ -138,21 +187,37 @@ export function planFlight(events: readonly ServerEvent[], landed: boolean): Fli
     ...planned.map((e) => ({ x: e.x, alt: e.alt })),
   ];
 
+  const target = landed ? spots.find((s) => s.id === spotId) ?? spots[0] : null;
   let endX: number;
-  if (landed) {
-    // A long, flattening glide that meets the deck a quarter of the way in.
-    points.push({ x: deckStart - GAME_CONFIG.approach * 0.42, alt: ON_DECK + 110 });
-    points.push({ x: deckStart - 40, alt: ON_DECK + 14 });
-    endX = deckStart + carrierLength * 0.22;
+  if (target) {
+    const index = spots.indexOf(target);
+    // Hold altitude over every spot the flight passes up.
+    for (let j = 0; j < index; j += 1) {
+      const passed = spots[j];
+      points.push({ x: passed.left + passed.length / 2, alt: ON_DECK + 230 });
+    }
+    // A flattening glide that meets the deck a fifth of the way in.
+    points.push({ x: target.left - SPOT_GAP * 0.55, alt: ON_DECK + 100 });
+    points.push({ x: target.left - 30, alt: ON_DECK + 12 });
+    endX = target.left + target.length * 0.2;
     points.push({ x: endX, alt: ON_DECK });
   } else {
-    // Sinks out of the approach and meets the water short of the bow.
+    // Sinks out of the approach and meets the water short of the first bow.
     points.push({ x: deckStart - GAME_CONFIG.approach * 0.5, alt: ON_DECK + 40 });
     endX = deckStart - 90;
     points.push({ x: endX, alt: 0 });
   }
 
-  return { landed, events: planned, points, finishX, endX };
+  const finish = target ?? spots[0];
+  return {
+    landed,
+    events: planned,
+    points,
+    spots,
+    spot: target,
+    finishX: finish.left + finish.length / 2,
+    endX,
+  };
 }
 
 /**

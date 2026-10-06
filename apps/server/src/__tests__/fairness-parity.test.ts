@@ -47,6 +47,7 @@ import {
   chickenMinCashoutLane,
   verifyAvia,
   aviaLandingChance,
+  aviaSafeLandingMaxStake,
 } from '../../../web/lib/verify';
 
 const VERIFY_PATH = 'apps/web/lib/verify.ts';
@@ -182,16 +183,23 @@ describe('fairness parity: server engines ↔ browser verifier', () => {
     }
   });
 
-  it('avia flights agree — landing, every event and the multiplier', async () => {
-    expect(aviaLandingChance()).toBe(avia.landingChance());
-    for (const s of seeds.slice(0, 80)) {
-      const got = await verifyAvia(s.serverSeed, s.clientSeed, s.nonce);
-      const server = avia.fly(s);
-      expect(got, `nonce ${s.nonce}`).toEqual({
-        landed: server.landed,
-        kinds: server.events.map((e) => e.kind),
-        multiplier: server.flightMultiplier,
-      });
+  it('avia flights agree — every speed, safe or not: landing, events, spot and payout', async () => {
+    for (const mode of ['slow', 'fast', 'turbo'] as const) {
+      expect(aviaLandingChance(mode), mode).toBe(avia.landingChance(mode));
+      expect(aviaSafeLandingMaxStake(mode), mode).toBe(avia.safeLandingMaxStake(mode));
+      for (const safe of [false, true]) {
+        for (const s of seeds.slice(0, 40)) {
+          const got = await verifyAvia(s.serverSeed, s.clientSeed, s.nonce, mode, safe);
+          const server = avia.fly(s, mode, safe);
+          expect(got, `${mode} safe=${safe} nonce ${s.nonce}`).toEqual({
+            landed: server.landed,
+            kinds: server.events.map((e) => e.kind),
+            multiplier: server.flightMultiplier,
+            spot: server.spot,
+            payoutMultiplier: server.payoutMultiplier,
+          });
+        }
+      }
     }
   });
 });

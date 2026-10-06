@@ -3,8 +3,9 @@
  *
  *   GET  /api/vip/me              tier, wagered volume, claimable rakeback
  *   POST /api/vip/claim-rakeback  credit the claimable amount
- *   POST /api/bonus/spin          claim the daily wheel spin
- *   POST /api/vip/daily-wheel     deprecated alias of /api/bonus/spin
+ *
+ * The daily wheel (/api/bonus/spin, /api/vip/daily-wheel) was removed with the
+ * Free Money page — no free spins are paid out any more.
  *
  * All reward maths lives in bonus.service; these handlers only translate
  * between HTTP and that service, so the eligibility and idempotency guards
@@ -18,21 +19,12 @@ import { WalletNotFoundError } from '../services/ledger.service';
 import {
   claimRakeback,
   getVipStatus,
-  spinDailyWheel,
   NothingToClaimError,
-  WheelNotReadyError,
   VIP_TIERS,
-  WHEEL_SEGMENTS,
 } from '../services/bonus.service';
 
 export function registerVipRoutes(app: FastifyInstance) {
-  app.get('/api/vip/config', async () => ({
-    tiers: VIP_TIERS,
-    wheel: WHEEL_SEGMENTS.map((segment) => ({
-      prize: segment.prize,
-      weight: segment.weight,
-    })),
-  }));
+  app.get('/api/vip/config', async () => ({ tiers: VIP_TIERS }));
 
   app.get('/api/vip/me', async (req, reply) => {
     const identity = identityFromRequest(req);
@@ -62,34 +54,4 @@ export function registerVipRoutes(app: FastifyInstance) {
       throw err;
     }
   });
-
-  const handleSpin = async (req: FastifyRequest, reply: FastifyReply) => {
-    const identity = identityFromRequest(req);
-    if (!identity) return reply.code(401).send({ error: 'unauthorized' });
-
-    const currency = (req.body as { currency?: string })?.currency;
-
-    try {
-      const result = await spinDailyWheel({ userId: identity.userId, currency });
-      pushBalanceToUser(identity.userId, result.balance);
-      return result;
-    } catch (err) {
-      if (err instanceof WheelNotReadyError) {
-        return reply.code(409).send({
-          error: 'wheel_not_ready',
-          nextAvailableAt: err.nextAvailableAt.toISOString(),
-        });
-      }
-      if (err instanceof WalletNotFoundError) {
-        return reply.code(404).send({ error: 'wallet_not_found' });
-      }
-      if (err instanceof Error && err.message === 'bonus: account is frozen') {
-        return reply.code(409).send({ error: 'account_frozen' });
-      }
-      throw err;
-    }
-  };
-
-  app.post('/api/bonus/spin', handleSpin);
-  app.post('/api/vip/daily-wheel', handleSpin);
 }

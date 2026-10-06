@@ -9,7 +9,9 @@ import {
   AuthError,
   safeDestination,
   submitPassword,
+  TotpRequiredError,
   verifyLoginCode,
+  verifyTotp,
   type AuthedUser,
   type CodeChallenge,
 } from '@/app/(auth)/authClient';
@@ -53,6 +55,11 @@ function LoginForm() {
   const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
   const [digits, setDigits] = useState<string[]>(emptyDigits);
   const [cooldown, setCooldown] = useState(0);
+
+  // Set once every earlier factor has passed on an account with an
+  // authenticator. Like `challenge`, its presence *is* the step.
+  const [totpChallenge, setTotpChallenge] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState('');
 
   // A Turnstile token is single-use: every rejected submit has to reset the
   // widget, or the retry replays a token Cloudflare has already redeemed.
@@ -128,7 +135,8 @@ function LoginForm() {
       setCooldown(result.challenge.resendAfterSeconds);
       focusFirstOtpBox();
     } catch (err) {
-      setError(err instanceof AuthError ? err.message : 'Something went wrong. Try again.');
+      if (err instanceof TotpRequiredError) setTotpChallenge(err.challenge);
+      else setError(err instanceof AuthError ? err.message : 'Something went wrong. Try again.');
     } finally {
       // Reset on every outcome, not just failures. A Turnstile token is
       // single-use: once submitted it is spent, so a second click with the same
@@ -150,6 +158,12 @@ function LoginForm() {
         const user = await verifyLoginCode(challenge.email, code);
         window.location.replace(destinationFor(user));
       } catch (err) {
+        if (err instanceof TotpRequiredError) {
+          setChallenge(null);
+          setTotpChallenge(err.challenge);
+          setBusy(false);
+          return;
+        }
         setError(err instanceof AuthError ? err.message : 'Could not verify that code.');
         setDigits(emptyDigits());
         focusFirstOtpBox();
@@ -199,8 +213,26 @@ function LoginForm() {
     }
   };
 
+  /** The authenticator step: its code (or a backup code) opens the session. */
+  const submitTotp = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy || !totpChallenge || !totpCode.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const user = await verifyTotp(totpChallenge, totpCode.trim());
+      window.location.replace(destinationFor(user));
+    } catch (err) {
+      setError(err instanceof AuthError ? err.message : t('security.totpInvalid'));
+      setTotpCode('');
+      setBusy(false);
+    }
+  };
+
   /** Back to step one. The password is cleared — it is re-entered, not reused. */
   const restart = () => {
+    setTotpChallenge(null);
+    setTotpCode('');
     setChallenge(null);
     setDigits(emptyDigits());
     setPassword('');
@@ -209,6 +241,53 @@ function LoginForm() {
   };
 
   const banner = error ?? (redirectReason ? REDIRECT_COPY[redirectReason] : null);
+
+  // ── Last step: the authenticator code ──
+  if (totpChallenge) {
+    return (
+      <div className="auth__card">
+        <span className="auth__brand">FRIGAT</span>
+        <h1 className="auth__title">{t('security.signInTitle')}</h1>
+        <p className="auth__sub">{t('security.signInSub')}</p>
+
+        {error && (
+          <p className="auth__error" role="alert">
+            {error}
+          </p>
+        )}
+
+        <form onSubmit={submitTotp} noValidate>
+          <div className="auth__field">
+            <label className="auth__label" htmlFor="login-totp">
+              {t('security.codeLabel')}
+            </label>
+            <input
+              id="login-totp"
+              className="auth__input"
+              inputMode="text"
+              autoComplete="one-time-code"
+              autoFocus
+              maxLength={12}
+              value={totpCode}
+              onChange={(event) => setTotpCode(event.target.value)}
+              placeholder="123456"
+              disabled={busy}
+            />
+          </div>
+          <button type="submit" className="auth__submit" disabled={busy || !totpCode.trim()}>
+            {busy ? t('security.verifying') : t('security.verifySignIn')}
+          </button>
+          <p className="auth__hint">{t('security.backupHint')}</p>
+        </form>
+
+        <div className="auth__otp-foot">
+          <button type="button" className="auth__link-btn" disabled={busy} onClick={restart}>
+            {t('auth.backToSignIn')}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Step two: the emailed code ──
   // Rendered instead of the whole method chooser, not beside it: switching to

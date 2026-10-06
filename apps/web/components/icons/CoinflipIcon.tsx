@@ -5,8 +5,6 @@ const REEDS = Array.from({ length: 9 }, (_, i) => -80 + i * 20);
 
 export function CoinflipIcon({ size = 40, title, ...rest }: GameIconProps) {
   const uid = useId().replace(/:/g, '');
-  const face = `coin-face-${uid}`;
-  const rim = `coin-rim-${uid}`;
   const glow = `coin-glow-${uid}`;
 
   return (
@@ -21,17 +19,6 @@ export function CoinflipIcon({ size = 40, title, ...rest }: GameIconProps) {
     >
       {title && <title>{title}</title>}
       <defs>
-        <linearGradient id={face} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#ffe9a8" />
-          <stop offset="35%" stopColor="#d9a441" />
-          <stop offset="70%" stopColor="#c98a1c" />
-          <stop offset="100%" stopColor="#8a5c10" />
-        </linearGradient>
-        <linearGradient id={rim} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#8a5c10" />
-          <stop offset="50%" stopColor="#e0a52f" />
-          <stop offset="100%" stopColor="#6d470c" />
-        </linearGradient>
         <filter id={glow} x="-40%" y="-40%" width="180%" height="180%">
           <feGaussianBlur stdDeviation="1.5" result="blur" />
           <feMerge>
@@ -55,8 +42,8 @@ export function CoinflipIcon({ size = 40, title, ...rest }: GameIconProps) {
 
       <g filter={`url(#${glow})`} transform="rotate(-14 26 22)">
         {/* Edge slab behind the face gives the coin its thickness. */}
-        <ellipse cx="28.4" cy="22" rx="11.2" ry="15.6" fill={`url(#${rim})`} />
-        <ellipse cx="26" cy="22" rx="11.2" ry="15.6" fill={`url(#${face})`} />
+        <ellipse cx="28.4" cy="22" rx="11.2" ry="15.6" fill="#8a5c10" />
+        <ellipse cx="26" cy="22" rx="11.2" ry="15.6" fill="#d9a441" />
         <ellipse
           cx="26"
           cy="22"

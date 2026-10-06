@@ -11,16 +11,16 @@ import {
 } from '@/lib/useCanvasRenderer';
 
 import {
-  ACCENT,
   BOARD,
   FONT,
   GOLD,
   NEG,
+  TABLES,
   alpha,
   drawBackdrop,
-  drawVignette,
   makeScene,
   poly,
+  shade,
 } from './three';
 
 export const CRASH_GROWTH_RATE_PER_SEC = CRASH.growthRatePerSec;
@@ -57,11 +57,12 @@ interface Particle {
 }
 
 /**
- * Blue while the round is live — the state the player is still acting on —
- * gold once it pays, red when it busts. That is the token contract rather than
- * the old amber board: gold is reward, so it is not allowed to mean "rising".
+ * The board's violet while the round is live — the state the player is still
+ * acting on — gold once it pays, red when it busts. Gold is reward, so it is
+ * not allowed to mean "rising".
  */
-const LIVE = ACCENT;
+const THEME = TABLES.crash;
+const LIVE = THEME.hue;
 const CASHED = GOLD;
 const BUST = NEG;
 
@@ -168,6 +169,7 @@ export function CrashCanvas({
           glowStrength: phase === 'RUNNING' || ended ? 0.12 : 0.07,
           gridCols: 8,
           gridRows: 4,
+          theme: THEME,
         });
 
         // Multiplier rungs: horizontal lines standing in the flight plane, the
@@ -181,7 +183,7 @@ export function CrashCanvas({
           const z = zOf(m);
           const a = scene.project(padLeft, FLIGHT_Y, z);
           const b = scene.project(width - padRight, FLIGHT_Y, z);
-          ctx.strokeStyle = i === 0 ? BOARD.line2 : BOARD.line;
+          ctx.strokeStyle = i === 0 ? shade(THEME.line, 0.15) : THEME.line;
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
@@ -219,10 +221,7 @@ export function CrashCanvas({
 
           // The climb as a wall standing on the floor: the same area fill the
           // flat chart had, except it now has a footing you can see.
-          const fill = ctx.createLinearGradient(0, scene.project(0, FLIGHT_Y, zSpan).y, 0, base[0].y);
-          fill.addColorStop(0, alpha(curveColour, 0.34));
-          fill.addColorStop(1, alpha(curveColour, 0.02));
-          poly(ctx, [...top, ...base.slice().reverse()], fill);
+          poly(ctx, [...top, ...base.slice().reverse()], alpha(curveColour, 0.16));
 
           // The curve itself, along the top of the wall.
           ctx.beginPath();
@@ -323,7 +322,6 @@ export function CrashCanvas({
           ctx.restore();
         }
 
-        drawVignette(ctx, scene);
       },
     [phase, displayMultiplier, bettingMsRemaining, cashedOutAt, reducedMotion]
   );
@@ -370,15 +368,12 @@ function drawRocket(
   ctx.translate(head.x, head.y);
   ctx.rotate(angle);
 
-  const plume = ctx.createLinearGradient(-26 * pulse, 0, 0, 0);
-  plume.addColorStop(0, alpha(LIVE, 0));
-  plume.addColorStop(1, alpha(LIVE, 0.85));
   ctx.beginPath();
   ctx.moveTo(-26 * pulse, 0);
   ctx.lineTo(-8, -4.5);
   ctx.lineTo(-8, 4.5);
   ctx.closePath();
-  ctx.fillStyle = plume;
+  ctx.fillStyle = alpha(LIVE, 0.6);
   ctx.fill();
 
   ctx.beginPath();

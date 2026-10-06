@@ -8,7 +8,20 @@ import {
   type CanvasFrame,
 } from '@/lib/useCanvasRenderer';
 
-import { ACCENT_DEEP, BOARD, FONT, NEG, POS, alpha, shade } from './three';
+import {
+  BOARD,
+  FONT,
+  NEG,
+  POS,
+  TABLES,
+  alpha,
+  neu,
+  neuInset,
+  roundRectPath,
+  shade,
+} from './three';
+
+const THEME = TABLES.dice;
 
 export type DiceDirection = 'OVER' | 'UNDER';
 
@@ -72,7 +85,9 @@ export function DiceCanvas({
   const draw = useMemo(
     () =>
       ({ ctx, width, height: h }: CanvasFrame) => {
-        ctx.clearRect(0, 0, width, h);
+        // The board paints its own surface so the rail can be pressed into it.
+        ctx.fillStyle = THEME.surface;
+        ctx.fillRect(0, 0, width, h);
 
         const pad = Math.min(width * 0.08, 44);
         const left = pad;
@@ -100,17 +115,16 @@ export function DiceCanvas({
 
         // The rail. The losing side stays a flat neutral: it is the ground the
         // paying side is measured against, not a second signal competing with it.
-        roundedRect(ctx, left, trackY - TRACK_H / 2, span, TRACK_H, TRACK_H / 2);
-        ctx.fillStyle = shade(BOARD.neutral, -0.3);
-        ctx.fill();
+        // The rail is a groove pressed into the surface.
+        const rail = roundRectPath(left, trackY - TRACK_H / 2, span, TRACK_H, TRACK_H / 2);
+        neuInset(ctx, rail, shade(THEME.surface, -0.18), 0.6);
 
         const zoneFrom = direction === 'UNDER' ? left : at(target);
         const zoneTo = direction === 'UNDER' ? at(target) : right;
         if (zoneTo - zoneFrom > 1) {
           ctx.save();
-          roundedRect(ctx, left, trackY - TRACK_H / 2, span, TRACK_H, TRACK_H / 2);
-          ctx.clip();
-          ctx.fillStyle = ACCENT_DEEP;
+          ctx.clip(rail);
+          ctx.fillStyle = THEME.hue;
           ctx.fillRect(zoneFrom, trackY - TRACK_H / 2, zoneTo - zoneFrom, TRACK_H);
           ctx.restore();
         }
@@ -121,7 +135,7 @@ export function DiceCanvas({
         ctx.textBaseline = 'top';
         for (const tick of TICKS) {
           const x = at(tick);
-          ctx.strokeStyle = BOARD.line2;
+          ctx.strokeStyle = THEME.line;
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(Math.round(x) + 0.5, trackY + TRACK_H / 2 + 4);
@@ -158,13 +172,17 @@ export function DiceCanvas({
         const bubbleX = Math.min(right - bubbleW / 2, Math.max(left + bubbleW / 2, markerX));
         const bubbleY = trackY - TRACK_H / 2 - 62;
 
+        // The readout sits on a plate raised out of the surface; the outcome
+        // colours its edge once the roll settles.
+        const plate = roundRectPath(bubbleX - bubbleW / 2, bubbleY, bubbleW, bubbleH, 10);
+        neu(ctx, () => {
+          ctx.fillStyle = THEME.surface;
+          ctx.fill(plate);
+        }, 0.9);
         if (outcome) {
-          roundedRect(ctx, bubbleX - bubbleW / 2, bubbleY, bubbleW, bubbleH, 8);
-          ctx.fillStyle = alpha(outcome, 0.14);
-          ctx.fill();
-          ctx.strokeStyle = alpha(outcome, 0.5);
-          ctx.lineWidth = 1;
-          ctx.stroke();
+          ctx.strokeStyle = alpha(outcome, 0.6);
+          ctx.lineWidth = 1.5;
+          ctx.stroke(plate);
         }
 
         ctx.fillStyle = tint;

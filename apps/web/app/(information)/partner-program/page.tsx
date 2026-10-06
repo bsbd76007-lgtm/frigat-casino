@@ -4,7 +4,7 @@
  * /partner-program
  *
  * The affiliate scheme, described against what the server actually does:
- * `revSharePercentage` on the user row (25% by default, per-account so an
+ * `revSharePercentage` on the user row (10% by default, per-account so an
  * affiliate can be given a custom cut), earnings accruing into a separate
  * `affiliateBalance`, and `POST /api/referrals/claim` to draw it down.
  *
@@ -34,11 +34,15 @@ interface ReferralSummary {
   currency: string;
 }
 
-/** Mirrors `revSharePercentage` on the user row — 25% unless an admin lifts it. */
+/**
+ * Mirrors `revSharePercentage` on the user row — 10% unless an admin lifts it.
+ * The share is of the house edge on referred players' bets (see
+ * settleAffiliateReward), not of their losses.
+ */
 const TIERS = [
-  { band: 'Standard', invited: '1 – 9 active', share: '25%' },
-  { band: 'Silver partner', invited: '10 – 49 active', share: 'up to 30%' },
-  { band: 'Gold partner', invited: '50 – 199 active', share: 'up to 35%' },
+  { band: 'Standard', invited: '1 – 9 active', share: '10%' },
+  { band: 'Silver partner', invited: '10 – 49 active', share: 'up to 12%' },
+  { band: 'Gold partner', invited: '50 – 199 active', share: 'up to 15%' },
   { band: 'VIP partner', invited: '200+ active', share: 'negotiated' },
 ];
 

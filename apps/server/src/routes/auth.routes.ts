@@ -34,6 +34,7 @@ import {
   verifyOtp,
   type OtpPurpose,
 } from '../services/otp.service';
+import { spendSecondFactor } from '../services/totp.service';
 
 const ARGON2_OPTS: argon2.Options = {
   type: argon2.argon2id,
@@ -100,6 +101,38 @@ function signToken(userId: string, role: Role, tokenVersion: number): string {
     expiresIn: config.jwtExpiresIn as jwt.SignOptions['expiresIn'],
     subject: userId,
   });
+}
+
+// ── Two-factor challenge ──
+//
+// When an account has an authenticator enabled, the steps that would hand out
+// a session (the admin bypass and the email-code step) hand out this instead:
+// a five-minute ticket naming the account, exchanged at /api/auth/2fa/verify
+// for the real session once the code checks out.
+//
+// Signed with a key *derived from* the session secret, never the session
+// secret itself. The session guard accepts any token signed with that one
+// whose `sub` and `tv` match — so a challenge signed with it would be a
+// complete session that skipped the second factor.
+const CHALLENGE_SECRET = `${config.jwtSecret}:2fa-challenge`;
+const CHALLENGE_TTL = '5m';
+
+function signChallenge(userId: string, tokenVersion: number): string {
+  return jwt.sign({ purpose: '2fa', tv: tokenVersion }, CHALLENGE_SECRET, {
+    algorithm: 'HS256',
+    expiresIn: CHALLENGE_TTL,
+    subject: userId,
+  });
+}
+
+function readChallenge(token: string): { userId: string; tv: number } | null {
+  try {
+    const claims = jwt.verify(token, CHALLENGE_SECRET, { algorithms: ['HS256'] }) as jwt.JwtPayload;
+    if (claims.purpose !== '2fa' || typeof claims.sub !== 'string') return null;
+    return { userId: claims.sub, tv: typeof claims.tv === 'number' ? claims.tv : -1 };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -315,6 +348,9 @@ export function registerAuthRoutes(app: FastifyInstance) {
         frozen: true,
         createdAt: true,
         referralCode: true,
+        totpEnabled: true,
+        telegramUsername: true,
+        telegramLinkedAt: true,
         wallets: { select: { balance: true, currency: true } },
       },
     });
@@ -331,6 +367,10 @@ export function registerAuthRoutes(app: FastifyInstance) {
       frozen: user.frozen,
       createdAt: user.createdAt,
       referralCode: user.referralCode,
+      totpEnabled: user.totpEnabled,
+      telegram: user.telegramUsername
+        ? { username: user.telegramUsername, linkedAt: user.telegramLinkedAt }
+        : null,
       balance: wallet?.balance.toString() ?? '0',
       currency: wallet?.currency ?? 'USD',
     });
@@ -613,6 +653,7 @@ export function registerAuthRoutes(app: FastifyInstance) {
         // response timing hint at which addresses are admins.
         frozen: true,
         createdAt: true,
+        totpEnabled: true,
         wallets: { select: { balance: true, currency: true } },
       },
     });
@@ -648,6 +689,16 @@ export function registerAuthRoutes(app: FastifyInstance) {
     // at warn level so the bypass leaves an audit trail rather than looking
     // like an ordinary sign-in.
     if (bypassesOtp(user.role, user.email)) {
+      // The email code is skipped for these accounts; an authenticator is not.
+      if (user.totpEnabled) {
+        req.log.info({ userId: user.id }, 'password accepted — authenticator code required');
+        return reply.send({
+          requiresOtp: false,
+          requiresTotp: true,
+          challenge: signChallenge(user.id, user.tokenVersion),
+        });
+      }
+
       const balance =
         user.wallets.find((w) => w.currency === 'USD')?.balance.toString() ?? '0';
 
@@ -790,6 +841,7 @@ export function registerAuthRoutes(app: FastifyInstance) {
           frozen: true,
           createdAt: true,
           tokenVersion: true,
+          totpEnabled: true,
         },
       });
 
@@ -802,7 +854,98 @@ export function registerAuthRoutes(app: FastifyInstance) {
       }
 
       clearThrottle(req.ip, 'otp-verify', email);
+
+      // Email code accepted, but the account has an authenticator: no session
+      // yet, only the ticket for the last step.
+      if (account.totpEnabled) {
+        req.log.info({ userId: account.id }, 'email code accepted — authenticator code required');
+        return reply.code(200).send({
+          requiresTotp: true,
+          challenge: signChallenge(account.id, account.tokenVersion),
+        });
+      }
+
       req.log.info({ userId: account.id }, 'sign-in via email code');
+
+      return reply.code(200).send({
+        token: signToken(account.id, account.role, account.tokenVersion),
+        user: {
+          id: account.id,
+          email: account.email,
+          role: account.role,
+          frozen: account.frozen,
+          createdAt: account.createdAt,
+        },
+      });
+    }
+  );
+
+  /**
+   * POST /api/auth/2fa/verify
+   *
+   * The last sign-in step for an account with an authenticator: the challenge
+   * from the previous step plus a 6-digit code (or a backup code) buys the
+   * session. Throttled per IP and per account like every other code check.
+   */
+  app.post<{ Body: { challenge?: unknown; code?: unknown } }>(
+    '/api/auth/2fa/verify',
+    async (req, reply) => {
+      const ticket =
+        typeof req.body?.challenge === 'string' ? readChallenge(req.body.challenge) : null;
+      const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+
+      if (!ticket) {
+        return reply.code(401).send({
+          error: 'challenge_expired',
+          message: 'That sign-in has expired. Please start again.',
+        });
+      }
+      if (!code) {
+        return reply.code(400).send({
+          error: 'invalid_code_format',
+          message: 'Enter the 6-digit code from your authenticator app.',
+        });
+      }
+      if (throttled(req.ip, 'totp-verify', ticket.userId)) {
+        return reply.code(429).send({
+          error: 'too_many_requests',
+          message: 'Too many attempts. Please wait a few minutes and try again.',
+        });
+      }
+
+      const account = await prisma.user.findUnique({
+        where: { id: ticket.userId },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          frozen: true,
+          createdAt: true,
+          tokenVersion: true,
+          totpEnabled: true,
+          deletedAt: true,
+        },
+      });
+      // A password change since the challenge was issued voids it, exactly as
+      // it voids sessions.
+      if (!account || account.deletedAt || !account.totpEnabled || account.tokenVersion !== ticket.tv) {
+        return reply.code(401).send({
+          error: 'challenge_expired',
+          message: 'That sign-in has expired. Please start again.',
+        });
+      }
+
+      if (!(await spendSecondFactor(account.id, code))) {
+        recordAccountFailure('totp-verify', account.id);
+        req.log.warn({ userId: account.id, ip: req.ip }, 'authenticator code rejected');
+        return reply.code(401).send({
+          error: 'invalid_totp',
+          message: 'That code is not valid. Check your authenticator app and try again.',
+        });
+      }
+
+      clearThrottle(req.ip, 'totp-verify', account.id);
+      req.log.info({ userId: account.id }, 'sign-in completed with authenticator code');
 
       return reply.code(200).send({
         token: signToken(account.id, account.role, account.tokenVersion),

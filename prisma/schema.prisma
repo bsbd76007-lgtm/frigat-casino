@@ -31,10 +31,13 @@ enum TransactionType {
   /// counting it as one would inflate deposit reporting with money that never
   /// entered the platform.
   AFFILIATE_CLAIM
-  /// Daily streak cashback. A distinct type rather than a DEPOSIT so the
-  /// once-a-day guard can identify a claim without a marker string, and so
-  /// bonus credits are not counted as money that entered the platform.
+  /// Daily streak cashback — retired with the win streak; kept because
+  /// historical rows reference it and PostgreSQL cannot drop an enum value.
   BONUS_CASHBACK
+  /// Deposit bonus (a percentage of one of the player's first deposits). Its
+  /// own type so it is never counted as money that entered the platform, and
+  /// so the withdrawal wagering check can find the latest one.
+  DEPOSIT_BONUS
 }
 
 enum TransactionStatus {
@@ -110,15 +113,37 @@ model User {
   frozenAt     DateTime?
   frozenReason String?
 
+  // ── Two-factor sign-in (authenticator app, RFC 6238) ──
+  /// AES-256-GCM sealed with a key derived from the server secret — never the
+  /// raw base32. Set at setup, and only trusted once `totpEnabled` is true:
+  /// a secret the player never confirmed with a valid code protects nothing.
+  totpSecret      String?
+  totpEnabled     Boolean   @default(false)
+  /// The last 30-second step a code was accepted for. A code is valid for its
+  /// step and one either side, so without this it could be replayed for up to
+  /// a minute and a half by anyone who watched it being typed.
+  totpLastStep    Int?
+  /// HMAC-SHA256 of each unused backup code. Spent codes are removed.
+  totpBackupCodes String[]  @default([])
+
+  // ── Telegram link (trial: stored and shown, no bot verifies it yet) ──
+  telegramUsername String?
+  telegramLinkedAt DateTime?
+
+  /// Set when the player deleted the account. The row stays — settled bets
+  /// and ledger entries reference it — but it is scrubbed, frozen and every
+  /// session revoked. See POST /api/account/delete.
+  deletedAt DateTime?
+
   // ── RevShare referral engine ──
   /// This user's own code, handed out to recruit others (?ref=<code>).
   referralCode       String  @unique @default(cuid())
   /// Who recruited this user. Set once at registration and never reassigned —
   /// a mutable attribution would let a later ?ref= steal an existing downline.
   referredById       String?
-  /// Share of a downline's net losses paid to THIS user as the referrer.
-  /// Per-user so individual affiliates can be given a custom cut.
-  revSharePercentage Decimal @default(25.00) @db.Decimal(5, 2)
+  /// Share of the house edge on a downline's bets paid to THIS user as the
+  /// referrer. Per-user so individual affiliates can be given a custom cut.
+  revSharePercentage Decimal @default(10.00) @db.Decimal(5, 2)
 
   referredBy User?  @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
   referrals  User[] @relation("Referrals")

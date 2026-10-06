@@ -10,7 +10,6 @@ import type { GameIconProps } from '@/components/icons/types';
 export function AviaIcon({ size = 48, title, ...rest }: GameIconProps) {
   const uid = useId().replace(/:/g, '');
   const glow = `avia-glow-${uid}`;
-  const body = `avia-body-${uid}`;
 
   return (
     <svg
@@ -31,10 +30,6 @@ export function AviaIcon({ size = 48, title, ...rest }: GameIconProps) {
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
-        <linearGradient id={body} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#c25560" />
-          <stop offset="100%" stopColor="#b91c1c" />
-        </linearGradient>
       </defs>
 
       {/* Sea and deck, so the icon reads as a carrier launch rather than a jet. */}
@@ -56,7 +51,7 @@ export function AviaIcon({ size = 48, title, ...rest }: GameIconProps) {
       <g filter={`url(#${glow})`} transform="rotate(-28 30 16)">
         <path
           d="M22 16.4c0-1.2 1-2.1 2.2-2.1h11.3c1.9 0 3.6 1 4.5 2.1-.9 1.2-2.6 2.1-4.5 2.1H24.2c-1.2 0-2.2-.9-2.2-2.1z"
-          fill={`url(#${body})`}
+          fill="#c25560"
         />
         {/* Upper and lower wing */}
         <rect x="27" y="10.6" width="3.4" height="11.6" rx="1.5" fill="#e5e7eb" />

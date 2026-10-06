@@ -15,8 +15,6 @@ import { SearchProvider } from '@/components/providers/SearchProvider';
 import { FavoritesProvider } from '@/context/FavoritesContext';
 import { Sidebar } from '@/components/nav/Sidebar';
 import { ProvablyFairModal } from '@/components/games/ProvablyFairModal';
-import StreakProgressBar from '@/components/streak/StreakProgressBar';
-import RestoreStreakModal from '@/components/streak/RestoreStreakModal';
 import { SupportChat } from '@/components/support/SupportChat';
 import { Toaster } from '@/components/ui/Toaster';
 
@@ -93,8 +91,6 @@ function DashboardChrome({ children }: { children: ReactNode }) {
         <main className="dash__main">{token ? children : <SignInGate />}</main>
       </div>
 
-      <StreakProgressBar />
-      <RestoreStreakModal />
 
       {/* Support is account-scoped and hides itself when signed out. There is
           no floating launcher: the sidebar's Support control opens it. */}

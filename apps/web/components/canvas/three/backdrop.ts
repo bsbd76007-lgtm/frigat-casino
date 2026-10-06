@@ -7,7 +7,7 @@
  */
 
 import type { Scene } from './scene';
-import { BOARD, ACCENT } from './palette';
+import { BOARD, ACCENT, type TableTheme } from './palette';
 import { drawFloorQuad } from './solids';
 
 export interface BackdropOptions {
@@ -19,6 +19,8 @@ export interface BackdropOptions {
   /** Tint the glow under the board — a win or a bust colours the whole table. */
   glow?: string;
   glowStrength?: number;
+  /** The board's signature surface, idle and line colours. */
+  theme?: TableTheme;
   /** Grid lines across the floor; 0 draws none. */
   gridRows?: number;
   gridCols?: number;
@@ -38,36 +40,25 @@ export function drawBackdrop(
     glowStrength = 0.1,
     gridRows = 0,
     gridCols = 0,
+    theme,
   } = options;
 
-  // The page behind the board. Vertical, not radial: the board's own glow is
-  // the only thing allowed to draw the eye to a point.
-  const sky = ctx.createLinearGradient(0, 0, 0, scene.height);
-  sky.addColorStop(0, BOARD.bg);
-  sky.addColorStop(1, '#0a0a0c');
-  ctx.fillStyle = sky;
+  // The page behind the board and the floor are one surface — the boards are
+  // neumorphic, so a solid stands out by its shadows, not by the floor being
+  // a different colour.
+  const surface = theme?.surface ?? BOARD.bg;
+  ctx.fillStyle = surface;
   ctx.fillRect(0, 0, scene.width, scene.height);
-
-  // The floor, brighter at the far edge where the light is.
-  const far = scene.project((x0 + x1) / 2, y0).y;
-  const near = scene.project((x0 + x1) / 2, y1).y;
-  const floor = ctx.createLinearGradient(0, far, 0, near);
-  floor.addColorStop(0, BOARD.floor);
-  floor.addColorStop(1, BOARD.floorDeep);
-  drawFloorQuad(ctx, scene, x0, x1, y0, y1, floor);
+  drawFloorQuad(ctx, scene, x0, x1, y0, y1, surface);
 
   if (glowStrength > 0) {
-    const centre = scene.project(scene.vanishX, y0 + (y1 - y0) * 0.35);
-    const radius = Math.max(scene.width, scene.height) * 0.6;
-    const halo = ctx.createRadialGradient(centre.x, centre.y, 0, centre.x, centre.y, radius);
-    halo.addColorStop(0, withAlpha(glow, glowStrength));
-    halo.addColorStop(1, withAlpha(glow, 0));
-    ctx.fillStyle = halo;
+    // A flat tint over the table, so a win or a bust still colours it.
+    ctx.fillStyle = withAlpha(glow, glowStrength * 0.35);
     ctx.fillRect(0, 0, scene.width, scene.height);
   }
 
   if (gridCols > 0 || gridRows > 0) {
-    ctx.strokeStyle = BOARD.line;
+    ctx.strokeStyle = theme?.line ?? BOARD.line;
     ctx.lineWidth = 1;
     for (let i = 1; i < gridCols; i += 1) {
       const x = x0 + ((x1 - x0) * i) / gridCols;
@@ -88,22 +79,6 @@ export function drawBackdrop(
       ctx.stroke();
     }
   }
-}
-
-/** Darkens the corners, so the board's own light is the brightest thing. */
-export function drawVignette(ctx: CanvasRenderingContext2D, scene: Scene): void {
-  const gradient = ctx.createRadialGradient(
-    scene.width / 2,
-    scene.height * 0.52,
-    Math.min(scene.width, scene.height) * 0.3,
-    scene.width / 2,
-    scene.height * 0.52,
-    Math.max(scene.width, scene.height) * 0.78
-  );
-  gradient.addColorStop(0, 'rgba(5,5,6,0)');
-  gradient.addColorStop(1, 'rgba(5,5,6,.55)');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, scene.width, scene.height);
 }
 
 function withAlpha(hex: string, a: number): string {

@@ -89,21 +89,14 @@ export function RadarLoader({ size = 96, speed = 0.55, label }: RadarLoaderProps
       ctx.lineTo(cx, cy + r);
       ctx.stroke();
 
-      // The sweep: a wedge trailing behind the beam, fading with angle.
+      // The sweep: a flat wedge trailing behind the beam.
       const TRAIL = Math.PI * 0.75;
-      const sweep = ctx.createConicGradient
-        ? ctx.createConicGradient(beam - TRAIL, cx, cy)
-        : null;
-      if (sweep) {
-        sweep.addColorStop(0, `rgba(${ACCENT}, 0)`);
-        sweep.addColorStop(TRAIL / (Math.PI * 2), `rgba(${ACCENT}, .34)`);
-        sweep.addColorStop(TRAIL / (Math.PI * 2) + 0.001, `rgba(${ACCENT}, 0)`);
-        sweep.addColorStop(1, `rgba(${ACCENT}, 0)`);
-        ctx.fillStyle = sweep;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      ctx.fillStyle = `rgba(${ACCENT}, .14)`;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, beam - TRAIL, beam);
+      ctx.closePath();
+      ctx.fill();
 
       // Leading edge
       ctx.strokeStyle = `rgba(${ACCENT}, .9)`;

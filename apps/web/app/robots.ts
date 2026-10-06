@@ -28,7 +28,7 @@ export default function robots(): MetadataRoute.Robots {
           // index with identical gate pages.
           '/favorites',
           '/referrals',
-          '/freemoney',
+          '/bonuses',
           '/vip',
           // Auth endpoints and flows.
           '/api/',

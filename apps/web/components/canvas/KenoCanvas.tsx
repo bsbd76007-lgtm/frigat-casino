@@ -9,8 +9,6 @@ import {
 } from '@/lib/useCanvasRenderer';
 
 import {
-  ACCENT,
-  ACCENT_DEEP,
   BOARD,
   FONT,
   GOLD,
@@ -18,10 +16,9 @@ import {
   ON_ACCENT,
   alpha,
   drawBackdrop,
+  TABLES,
   drawBox,
-  drawBoxShadow,
   drawFaceText,
-  drawVignette,
   faces,
   makeScene,
   makeTileGrid,
@@ -44,6 +41,20 @@ export interface KenoCanvasProps {
   height?: number;
   className?: string;
 }
+
+const THEME = TABLES.keno;
+/** A pick: bright cyan, deep enough to carry white numerals. */
+const PICKED = '#0e8fb3';
+/** A drawn number nobody picked: wine red, so a miss still reads as drawn. */
+const DRAWN = '#6b2c40';
+/**
+ * Untouched tiles take their row's colour — five rich, dark hues top to bottom,
+ * so the board reads as colour rather than as a grey slab, while every one is
+ * still dark enough to keep the numerals and the picks standing out.
+ */
+const ROW_COLOURS = ['#1f4a7a', '#24407f', '#3a3683', '#4a2f7c', '#5a2b6e'] as const;
+const rowColour = (tile: number, columns: number) =>
+  ROW_COLOURS[Math.floor(tile / columns) % ROW_COLOURS.length];
 
 const THICKNESS = { idle: 10, hover: 14, picked: 20, drawn: 7, hit: 24 } as const;
 const TURN_MS = 240;
@@ -108,7 +119,8 @@ export function KenoCanvas({
 
         const anyHit = [...drawnSet].some((tile) => pickSet.has(tile));
         drawBackdrop(ctx, scene, {
-          glow: anyHit ? GOLD : ACCENT,
+          theme: THEME,
+          glow: anyHit ? GOLD : THEME.hue,
           glowStrength: anyHit ? 0.12 : 0.08,
         });
 
@@ -136,8 +148,10 @@ export function KenoCanvas({
           }
 
           const box = grid.boxOf(tile, { thickness });
-          drawBoxShadow(ctx, scene, box, state === 'drawn' ? 0.45 : 0.85);
-          drawBox(ctx, scene, box, tileFaces(state, isHovered));
+          // A drawn miss settles almost flush — pressed; everything else
+          // stands proud of the surface.
+          const lift = state === 'drawn' ? 0.3 : isHovered ? 1.3 : 1;
+          drawBox(ctx, scene, box, tileFaces(state, isHovered, rowColour(tile, columns)), lift);
 
           if (state === 'hit') {
             const turnedAt = turnedAtRef.current.get(tile) ?? now;
@@ -169,7 +183,6 @@ export function KenoCanvas({
           ctx.fillText('Pick your numbers', centre.x, centre.y);
         }
 
-        drawVignette(ctx, scene);
       },
     [
       columns,
@@ -224,17 +237,17 @@ export function KenoCanvas({
   );
 }
 
-function tileFaces(state: KenoTileState, hovered: boolean) {
+function tileFaces(state: KenoTileState, hovered: boolean, idle: string) {
   switch (state) {
     case 'picked':
-      return faces(ACCENT_DEEP);
+      return faces(PICKED);
     case 'hit':
       return faces(GOLD, { top: GOLD_SOFT });
     case 'drawn':
       // A miss is still information: lighter than an untouched tile, but flat.
-      return faces(shade(BOARD.neutral, -0.25));
+      return faces(DRAWN);
     default:
-      return faces(hovered ? BOARD.neutralLit : BOARD.neutral);
+      return faces(hovered ? shade(idle, 0.18) : idle);
   }
 }
 
@@ -245,9 +258,9 @@ function labelColour(state: KenoTileState): string {
     case 'hit':
       return '#3a2a08';
     case 'drawn':
-      return BOARD.dim;
+      return '#e7b9c6';
     default:
-      return BOARD.muted;
+      return '#dfe6f5';
   }
 }
 

@@ -43,11 +43,7 @@ export function drawPlane(
   ctx.fill();
 
   // Fuselage
-  const body = ctx.createLinearGradient(0, -H, 0, H);
-  body.addColorStop(0, '#c25560');
-  body.addColorStop(0.55, '#dc2626');
-  body.addColorStop(1, '#991b1b');
-  ctx.fillStyle = body;
+  ctx.fillStyle = '#dc2626';
   ctx.beginPath();
   ctx.moveTo(L * 0.52, 0);
   ctx.quadraticCurveTo(L * 0.35, -H, -L * 0.1, -H * 0.85);
@@ -162,6 +158,136 @@ export function drawCarrier(
 }
 
 /**
+ * A runway island: a rock mass rising out of the sea to the landing line, with
+ * a strip along its crown. Same baseline contract as `drawCarrier`.
+ */
+export function drawIsland(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  deckY: number,
+  seaY: number,
+  width: number,
+  accent: string
+) {
+  const stripT = Math.max(3, (seaY - deckY) * 0.07);
+
+  // Rock, widening into the water.
+  ctx.fillStyle = '#4b5d3a';
+  ctx.beginPath();
+  ctx.moveTo(x + width * 0.04, deckY + stripT);
+  ctx.lineTo(x + width * 0.96, deckY + stripT);
+  ctx.lineTo(x + width * 1.08, seaY + 4);
+  ctx.lineTo(x - width * 0.08, seaY + 4);
+  ctx.closePath();
+  ctx.fill();
+  // Sand where it meets the sea.
+  ctx.fillStyle = '#c9b27c';
+  ctx.fillRect(x - width * 0.08, seaY - 3, width * 1.16, 7);
+
+  // Runway and its dashes.
+  ctx.fillStyle = '#3f4652';
+  ctx.fillRect(x, deckY, width, stripT);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = Math.max(1.5, width * 0.008);
+  ctx.setLineDash([width * 0.06, width * 0.05]);
+  ctx.beginPath();
+  ctx.moveTo(x + width * 0.06, deckY + stripT / 2);
+  ctx.lineTo(x + width * 0.94, deckY + stripT / 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // A palm, so it reads as an island at a glance.
+  const trunkH = Math.max(10, (seaY - deckY) * 0.45);
+  const tx = x + width * 0.82;
+  ctx.fillStyle = '#7c5a3a';
+  ctx.fillRect(tx, deckY - trunkH, Math.max(2, width * 0.015), trunkH);
+  ctx.fillStyle = '#3f8f4a';
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(tx + dir * width * 0.05, deckY - trunkH, width * 0.06, trunkH * 0.12, dir * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/**
+ * An oil rig: a helideck on the landing line, standing on legs in the sea.
+ * The smallest target, and the richest.
+ */
+export function drawRig(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  deckY: number,
+  seaY: number,
+  width: number,
+  accent: string
+) {
+  const deckT = Math.max(3, (seaY - deckY) * 0.08);
+
+  // Legs and cross-bracing.
+  ctx.strokeStyle = '#64748b';
+  ctx.lineWidth = Math.max(2, width * 0.03);
+  for (const f of [0.12, 0.88]) {
+    ctx.beginPath();
+    ctx.moveTo(x + width * f, deckY + deckT);
+    ctx.lineTo(x + width * f, seaY + 6);
+    ctx.stroke();
+  }
+  ctx.lineWidth = Math.max(1, width * 0.012);
+  ctx.beginPath();
+  ctx.moveTo(x + width * 0.12, deckY + deckT);
+  ctx.lineTo(x + width * 0.88, seaY);
+  ctx.moveTo(x + width * 0.88, deckY + deckT);
+  ctx.lineTo(x + width * 0.12, seaY);
+  ctx.stroke();
+
+  // Helideck with its H.
+  ctx.fillStyle = '#334155';
+  ctx.fillRect(x, deckY, width, deckT);
+  ctx.fillStyle = accent;
+  ctx.font = `900 ${Math.max(8, deckT * 1.4)}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('H', x + width / 2, deckY + deckT / 2);
+
+  // Derrick.
+  const derrickH = Math.max(12, (seaY - deckY) * 0.7);
+  ctx.strokeStyle = '#94a3b8';
+  ctx.lineWidth = Math.max(1, width * 0.012);
+  ctx.beginPath();
+  ctx.moveTo(x + width * 0.74, deckY);
+  ctx.lineTo(x + width * 0.82, deckY - derrickH);
+  ctx.lineTo(x + width * 0.9, deckY);
+  ctx.stroke();
+}
+
+/** The bonus a landing spot pays, flown on a tag above it. */
+export function drawSpotTag(
+  ctx: CanvasRenderingContext2D,
+  centreX: number,
+  deckY: number,
+  scale: number,
+  text: string,
+  colour: string
+) {
+  ctx.save();
+  ctx.font = `900 ${scale * 1.7}px ui-sans-serif, system-ui, sans-serif`;
+  const w = ctx.measureText(text).width + scale * 2;
+  const h = scale * 2.6;
+  const y = deckY - scale * 9;
+  ctx.fillStyle = 'rgba(8,17,27,.82)';
+  roundRect(ctx, centreX - w / 2, y - h / 2, w, h, h / 2);
+  ctx.fill();
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = colour;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, centreX, y + 0.5);
+  ctx.restore();
+}
+
+/**
  * Chequered finish flag. Its foot is `deckY` — the same landing line the
  * carriers are drawn from — so it stands on the deck, never above or in it.
  */
@@ -221,10 +347,7 @@ export function drawPickup(
   ctx.arc(2, 3, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  const grad = ctx.createRadialGradient(-radius * 0.3, -radius * 0.4, radius * 0.2, 0, 0, radius);
-  grad.addColorStop(0, spec.hazard ? '#d69199' : '#86bda6');
-  grad.addColorStop(1, fill);
-  ctx.fillStyle = grad;
+  ctx.fillStyle = fill;
   ctx.beginPath();
   ctx.arc(0, 0, radius, 0, Math.PI * 2);
   ctx.fill();
@@ -272,11 +395,7 @@ export function drawBomb(
     ctx.stroke();
   }
 
-  const shell = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.15, 0, 0, r);
-  shell.addColorStop(0, '#64748b');
-  shell.addColorStop(0.55, '#334155');
-  shell.addColorStop(1, '#111827');
-  ctx.fillStyle = shell;
+  ctx.fillStyle = '#334155';
   ctx.beginPath();
   ctx.arc(0, 0, r, 0, Math.PI * 2);
   ctx.fill();

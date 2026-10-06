@@ -6,7 +6,7 @@ import type { GameSlug } from '@/components/icons';
  * Drawn poster art for the whole catalogue.
  *
  * All eleven games, one system. The eight raster posters this replaces were
- * already a system — one two-stop gradient ground, one oversized object in the
+ * already a system — one flat ground, one oversized object in the
  * upper two thirds, a soft off-axis light band, and a fixed lockup at the foot
  * — but it lived in eight separate jpgs, so nothing enforced it and nothing
  * could be changed across the set. Here `Ground` and `Lockup` ARE the system:
@@ -92,13 +92,8 @@ function Lockup({ name }: PosterProps) {
 }
 
 interface GroundProps {
-  id: string;
-  from: string;
-  to: string;
-  /** Optional mid stop, for the two skies that need three. */
-  mid?: [string, number];
-  /** Gradient axis. Diagonal by default; 'v' for a straight vertical sky. */
-  axis?: 'diagonal' | 'v';
+  /** Flat ground colour. */
+  fill: string;
   /** The off-axis light sweep. Off for grounds that carry their own scenery. */
   band?: boolean;
   name: string;
@@ -106,24 +101,16 @@ interface GroundProps {
 }
 
 /**
- * Everything every poster shares: the 2:3 frame, the gradient ground, the
+ * Everything every poster shares: the 2:3 frame, the flat ground, the
  * light band, and the lockup. `slice` matches the raster contract — the art
  * crops rather than letterboxes when the tile is not exactly 2:3.
  */
 function Ground({
-  id,
-  from,
-  to,
-  mid,
-  axis = 'diagonal',
+  fill,
   band = true,
   name,
   children,
 }: GroundProps) {
-  const coords =
-    axis === 'v'
-      ? { x1: '0', y1: '0', x2: '0.25', y2: '1' }
-      : { x1: '0', y1: '0', x2: '1', y2: '1' };
   return (
     <svg
       viewBox="0 0 400 600"
@@ -132,14 +119,7 @@ function Ground({
       aria-label={name}
       preserveAspectRatio="xMidYMid slice"
     >
-      <defs>
-        <linearGradient id={`fg-${id}-bg`} {...coords}>
-          <stop offset="0" stopColor={from} />
-          {mid && <stop offset={mid[1]} stopColor={mid[0]} />}
-          <stop offset="1" stopColor={to} />
-        </linearGradient>
-      </defs>
-      <rect width="400" height="600" fill={`url(#fg-${id}-bg)`} />
+      <rect width="400" height="600" fill={fill} />
       {band && (
         <path
           d="M-40 250 L 250 -40 L 400 -40 L 60 340 Z"
@@ -158,7 +138,7 @@ function Ground({
    swoosh is already the off-axis element, and two diagonals fight. */
 export function CrashPoster({ name }: PosterProps) {
   return (
-    <Ground id="crash" from="#f5b301" to="#1f57d6" band={false} name={name}>
+    <Ground fill="#1f57d6" band={false} name={name}>
       <path d="M0 600 L 0 300 C 120 300 250 200 330 40 L 400 40 L 400 600 Z" fill="#2563eb" />
       <path
         d="M-10 372 C 120 366 246 250 316 66"
@@ -183,7 +163,7 @@ export function CrashPoster({ name }: PosterProps) {
 /* ── MINES — blue, with the two things on the board ────── */
 export function MinesPoster({ name }: PosterProps) {
   return (
-    <Ground id="mines" from="#3b82f6" to="#1035a6" name={name}>
+    <Ground fill="#2459cf" name={name}>
       {/* Gem: a flat crown and a faceted body, the facets a shade apart so it
           reads as cut stone without a gradient. */}
       <g transform="translate(214 232)">
@@ -221,7 +201,7 @@ export function RoulettePoster({ name }: PosterProps) {
     return `M0 0 L ${R * Math.cos(a0)} ${R * Math.sin(a0)} A ${R} ${R} 0 0 1 ${R * Math.cos(a1)} ${R * Math.sin(a1)} Z`;
   };
   return (
-    <Ground id="roul" from="#22c55e" to="#065f30" name={name}>
+    <Ground fill="#14904a" name={name}>
       <g transform="translate(150 176)">
         <circle cx="0" cy="0" r="146" fill="#0b1220" fillOpacity="0.25" />
         {Array.from({ length: 16 }, (_, i) => (
@@ -257,7 +237,7 @@ export function RoulettePoster({ name }: PosterProps) {
    A foreshortened disc at a readable angle carries the idea instead. */
 export function CoinflipPoster({ name }: PosterProps) {
   return (
-    <Ground id="coin" from="#f0c069" to="#8a5a12" name={name}>
+    <Ground fill="#c08a3a" name={name}>
       {/* Tails, tilted and behind. */}
       <g transform="translate(268 142) rotate(18)">
         <ellipse cx="0" cy="0" rx="58" ry="74" fill="#b8862f" />
@@ -293,7 +273,7 @@ export function DicePoster({ name }: PosterProps) {
   const pips = (xs: number[][], fill: string) =>
     xs.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="11" fill={fill} />);
   return (
-    <Ground id="dice" from="#8b5cf6" to="#4c1d95" name={name}>
+    <Ground fill="#6d3ed1" name={name}>
       <g transform="translate(146 214) rotate(-14)">
         <rect x="-84" y="-84" width="168" height="168" rx="26" fill="#f8fafc" />
         <g>{pips([[-44, -44], [44, -44], [-44, 0], [44, 0], [-44, 44], [44, 44]], '#1e1b4b')}</g>
@@ -316,7 +296,7 @@ export function PlinkoPoster({ name }: PosterProps) {
     }
   }
   return (
-    <Ground id="plink" from="#7c3aed" to="#db2777" name={name}>
+    <Ground fill="#a332b4" name={name}>
       <g fill="#ffffff" fillOpacity="0.9">
         {pegs.map(([x, y], i) => (
           <circle key={i} cx={x} cy={y} r="13" />
@@ -346,7 +326,7 @@ export function PlinkoPoster({ name }: PosterProps) {
 /* ── LIMBO — orange into yellow ─────────────────────────── */
 export function LimboPoster({ name }: PosterProps) {
   return (
-    <Ground id="limbo" from="#fb923c" to="#fde047" name={name}>
+    <Ground fill="#fcae42" name={name}>
       <g transform="translate(210 216) rotate(-12)">
         <rect x="-104" y="-104" width="208" height="208" rx="24" fill="#ffffff" />
         <rect x="-104" y="-104" width="208" height="208" rx="24" fill="#f59e0b" fillOpacity="0.12" />
@@ -369,7 +349,7 @@ export function LimboPoster({ name }: PosterProps) {
 /* ── KENO — blue into cyan ──────────────────────────────── */
 export function KenoPoster({ name }: PosterProps) {
   return (
-    <Ground id="keno" from="#2563eb" to="#22d3ee" name={name} band={false}>
+    <Ground fill="#2399ec" name={name} band={false}>
       {/* Card grid, drawn as hairlines rather than boxes so the marked ball is
           the only solid object on the ground. */}
       <g stroke="#ffffff" strokeOpacity="0.28" strokeWidth="4">
@@ -408,7 +388,7 @@ export function KenoPoster({ name }: PosterProps) {
 /* ── CHICKEN — violet, with the road ────────────────────── */
 export function ChickenPoster({ name }: PosterProps) {
   return (
-    <Ground id="chick" from="#6366f1" to="#7c3aed" name={name} band={false}>
+    <Ground fill="#6f50ef" name={name} band={false}>
       {/* Crossing, in perspective: stripes widen toward the viewer. */}
       <g fill="#ffffff" fillOpacity="0.16">
         {[0, 1, 2, 3].map((i) => (
@@ -450,7 +430,7 @@ export function ChickenPoster({ name }: PosterProps) {
 /* ── SLOTS — crimson ────────────────────────────────────── */
 export function SlotsPoster({ name }: PosterProps) {
   return (
-    <Ground id="slots" from="#f0334b" to="#7a0c22" name={name}>
+    <Ground fill="#b62138" name={name}>
       <rect x="72" y="112" width="256" height="216" rx="22" fill="#e0b055" />
       <rect x="92" y="134" width="216" height="172" rx="12" fill="#2a0710" />
       {/* Middle reel sits high, so the row reads as still spinning rather than
@@ -480,11 +460,7 @@ export function SlotsPoster({ name }: PosterProps) {
 export function AviaPoster({ name }: PosterProps) {
   return (
     <Ground
-      id="avia"
-      from="#2ee0cf"
-      to="#0b3f7d"
-      mid={['#1795c8', 0.55]}
-      axis="v"
+      fill="#1795c8"
       band={false}
       name={name}
     >

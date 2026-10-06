@@ -18,6 +18,7 @@
  * endpoints are signed with a *different* key to the payment ones.
  */
 
+import { bonusFor, wageringRemaining } from './depositBonus.service';
 import { createHash, timingSafeEqual } from 'crypto';
 import { Prisma, TransactionType, type CryptoPaymentStatus } from '@prisma/client';
 
@@ -624,6 +625,31 @@ async function settleDeposit(input: SettleDepositInput): Promise<WebhookResult> 
       data: { transactionId: ledgerRow.id },
     });
 
+    // Deposit bonus, in the same transaction: a percentage of the player's
+    // 1st, 2nd and 3rd credited deposits (see depositBonus.service). Keyed on
+    // the payment, so a replayed webhook can never pay it twice.
+    const priorDeposits = await tx.payment.count({
+      where: { userId: payment.userId, transactionId: { not: null }, id: { not: payment.id } },
+    });
+    const bonus = bonusFor(priorDeposits, creditAmount);
+    if (bonus) {
+      const withBonus = await tx.wallet.update({
+        where: { id: wallet.id },
+        data: { balance: { increment: bonus } },
+        select: { balance: true },
+      });
+      await tx.transaction.create({
+        data: {
+          walletId: wallet.id,
+          type: TransactionType.DEPOSIT_BONUS,
+          amount: bonus,
+          status: 'COMPLETED',
+          txHash: `deposit-bonus:${payment.id}`,
+        },
+      });
+      return { balance: withBonus.balance.toString() };
+    }
+
     return { balance: updated.balance.toString() };
   });
 
@@ -781,6 +807,27 @@ async function dispatchNowPaymentsPayout(
   };
 }
 
+/**
+ * Smallest withdrawal, in the USD ledger currency. Withdrawals are always
+ * entered in USD — the coin is only how it is paid out — so one figure is the
+ * minimum for every cryptocurrency.
+ */
+export const MIN_WITHDRAWAL_USD = '10';
+
+export class WithdrawalBelowMinimumError extends Error {
+  constructor() {
+    super(`The minimum withdrawal is $${MIN_WITHDRAWAL_USD}.`);
+    this.name = 'WithdrawalBelowMinimumError';
+  }
+}
+
+export class BonusWageringError extends Error {
+  constructor(readonly remaining: string) {
+    super(`Wager $${remaining} more before withdrawing — your deposit bonus is still being played through.`);
+    this.name = 'BonusWageringError';
+  }
+}
+
 export async function createWithdrawal(
   input: CreateWithdrawalInput
 ): Promise<CreateWithdrawalResult> {
@@ -788,6 +835,10 @@ export async function createWithdrawal(
   if (!amount.isFinite() || amount.lessThanOrEqualTo(0)) {
     throw new Error('payment: withdrawal amount must be positive');
   }
+  if (amount.lessThan(MIN_WITHDRAWAL_USD)) throw new WithdrawalBelowMinimumError();
+
+  const remaining = await wageringRemaining(input.userId);
+  if (remaining.gt(0)) throw new BonusWageringError(remaining.toFixed(2));
 
   // Reserve the funds. Throws InsufficientFundsError / AccountFrozenError,
   // which the route maps to 409s.

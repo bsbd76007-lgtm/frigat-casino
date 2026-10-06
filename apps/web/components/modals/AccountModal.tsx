@@ -27,6 +27,7 @@ import Link from 'next/link';
 
 import { useGameSocket } from '@/components/providers/GameSocketProvider';
 import { useLanguage } from '@/components/providers/LanguageProvider';
+import { AccountDelete, AccountSecurity } from '@/components/modals/AccountSecurity';
 import { useInjectedStyles } from '@/lib/useInjectedStyles';
 import { apiJson } from '@/lib/api';
 import { consumedAsSessionExpiry, handleSessionExpiry } from '@/lib/sessionExpiry';
@@ -183,10 +184,10 @@ html[data-theme='light'] .acc__mark { filter: invert(1); }
 .acc__input:disabled { opacity: .5; cursor: not-allowed; }
 
 .acc__submit { width: 100%; padding: 8px; font-family: inherit; font-size: 14px;
-  font-weight: 800; color: var(--fg-bg);
-  background: linear-gradient(90deg, var(--fg-accent), var(--fg-accent-deep)); border: none; border-radius: var(--fg-r-lg);
+  font-weight: 800; color: var(--fg-on-accent);
+  background: var(--fg-accent-deep); border: none; border-radius: var(--fg-r-lg);
   cursor: pointer; transition: background var(--fg-t); }
-.acc__submit:hover:not(:disabled) { background: linear-gradient(90deg, var(--fg-pos), var(--fg-accent)); }
+.acc__submit:hover:not(:disabled) { background: var(--fg-accent-mid); }
 .acc__submit:disabled { opacity: .45; cursor: not-allowed; }
 .acc__submit:focus-visible { outline: none; box-shadow: var(--fg-ring); }
 
@@ -764,6 +765,7 @@ export function AccountModal({
                 )}
               </div>
               {profile.frozen && <p className="acc__note">{t('account.frozenNote')}</p>}
+              <AccountSecurity />
             </section>
 
             {vip && (
@@ -837,6 +839,7 @@ export function AccountModal({
                   {t('account.signOut')}
                 </button>
               )}
+              <AccountDelete />
             </div>
           </>
         )}

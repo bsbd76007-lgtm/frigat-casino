@@ -8,7 +8,21 @@ import {
   type CanvasFrame,
 } from '@/lib/useCanvasRenderer';
 
-import { ACCENT_DEEP, BOARD, FONT, GOLD, NEG, POS, alpha, shade } from './three';
+import {
+  BOARD,
+  FONT,
+  GOLD,
+  NEG,
+  POS,
+  TABLES,
+  alpha,
+  neu,
+  neuInset,
+  roundRectPath,
+  shade,
+} from './three';
+
+const THEME = TABLES.limbo;
 
 export interface LimboRound {
   /** Changes per round; a new id is what starts the count-up. */
@@ -62,7 +76,10 @@ export function LimboCanvas({
   const draw = useMemo(
     () =>
       ({ ctx, width, height: h }: CanvasFrame) => {
-        ctx.clearRect(0, 0, width, h);
+        // The board paints its own surface so its plate and bar can be raised
+        // out of it and pressed into it.
+        ctx.fillStyle = THEME.surface;
+        ctx.fillRect(0, 0, width, h);
 
         const achieved = round?.achievedMultiplier ?? 1;
         const run = runRef.current;
@@ -84,12 +101,19 @@ export function LimboCanvas({
         const win = settled ? round?.win === true : null;
         const tint = win === null ? BOARD.text : win ? POS : NEG;
 
-        // The readout.
+        // The readout, on a plate raised out of the surface.
         const readoutY = h * 0.4;
+        const size = Math.min(72, width * 0.17);
+        const plateW = Math.min(width - 32, size * 5.2);
+        const plateH = size * (settled ? 2 : 1.5);
+        const plateTop = readoutY - size * 0.75;
+        neu(ctx, () => {
+          ctx.fillStyle = THEME.surface;
+          ctx.fill(roundRectPath(width / 2 - plateW / 2, plateTop, plateW, plateH, 18));
+        }, 1.2);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = tint;
-        const size = Math.min(72, width * 0.17);
         ctx.font = `700 ${size}px ${FONT.num}`;
         ctx.fillText(`${formatMultiplier(value)}x`, width / 2, readoutY);
 
@@ -108,15 +132,14 @@ export function LimboCanvas({
         const logTarget = Math.log(Math.max(target, 1.0001));
         const progress = Math.min(1.12, Math.log(Math.max(value, 1)) / logTarget);
 
-        roundedRect(ctx, left, barY, span, barH, barH / 2);
-        ctx.fillStyle = shade(BOARD.neutral, -0.3);
-        ctx.fill();
+        // A groove pressed into the surface.
+        const bar = roundRectPath(left, barY, span, barH, barH / 2);
+        neuInset(ctx, bar, shade(THEME.surface, -0.18), 0.5);
 
         if (progress > 0) {
           ctx.save();
-          roundedRect(ctx, left, barY, span, barH, barH / 2);
-          ctx.clip();
-          ctx.fillStyle = win === false ? NEG : win === true ? POS : ACCENT_DEEP;
+          ctx.clip(bar);
+          ctx.fillStyle = win === false ? NEG : win === true ? POS : THEME.hue;
           ctx.fillRect(left, barY, span * Math.min(1, progress), barH);
           ctx.restore();
         }
@@ -164,24 +187,6 @@ export function LimboCanvas({
 function formatMultiplier(n: number): string {
   if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
   return n.toFixed(2);
-}
-
-function roundedRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number
-): void {
-  const radius = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + w, y, x + w, y + h, radius);
-  ctx.arcTo(x + w, y + h, x, y + h, radius);
-  ctx.arcTo(x, y + h, x, y, radius);
-  ctx.arcTo(x, y, x + w, y, radius);
-  ctx.closePath();
 }
 
 export default LimboCanvas;

@@ -27,6 +27,13 @@ function addressLooksValid(value: string): boolean {
   return value.length >= 20 && value.length <= 128 && /^[a-zA-Z0-9:_-]+$/.test(value);
 }
 
+/**
+ * Smallest withdrawal, in USD — the same for every coin, because the amount is
+ * always entered in USD and the coin is only how it is paid out. Mirrors
+ * MIN_WITHDRAWAL_USD on the server, which is what actually enforces it.
+ */
+const MIN_WITHDRAWAL = 10;
+
 function messageForError(err: unknown): string {
   if (!(err instanceof ApiError)) {
     return 'Could not submit the withdrawal. Please try again.';
@@ -89,8 +96,15 @@ export default function WithdrawModal({
     return Number(amount) > Number(available);
   }, [amount, amountValid, available]);
 
+  const belowMinimum = amountValid && Number(amount) < MIN_WITHDRAWAL;
+
   const canSubmit =
-    amountValid && addressValid && !exceedsBalance && !loading && available !== null;
+    amountValid &&
+    !belowMinimum &&
+    addressValid &&
+    !exceedsBalance &&
+    !loading &&
+    available !== null;
 
   const showAmountError = touched.amount && amount.length > 0 && !amountValid;
   const showAddressError = touched.address && address.length > 0 && !addressValid;
@@ -190,7 +204,7 @@ export default function WithdrawModal({
             id="withdraw-amount"
             className="wal__input"
             inputMode="decimal"
-            placeholder="0.00"
+            placeholder={`${MIN_WITHDRAWAL}.00`}
             value={amount}
             onChange={(event) => setAmount(event.target.value.trim())}
             onBlur={() => setTouched((prev) => ({ ...prev, amount: true }))}
@@ -224,8 +238,13 @@ export default function WithdrawModal({
         />
       </div>
 
+      <p className="wal__hint">{t('wallet.wdMinNote', { amount: `$${MIN_WITHDRAWAL}` })}</p>
+
       {showAmountError && (
         <p className="wal__error">{t('wallet.wdBadAmount')}</p>
+      )}
+      {belowMinimum && touched.amount && (
+        <p className="wal__error">{t('wallet.wdBelowMin', { amount: `$${MIN_WITHDRAWAL}` })}</p>
       )}
       {/* Balance is live, so this shows immediately rather than on blur — the
           player needs to see it the moment it becomes true. */}

@@ -162,6 +162,63 @@ function drawBox(
   poly(ctx, [P(b.u0, b.t0, b.h1), P(b.u1, b.t0, b.h1), P(b.u1, b.t1, b.h1), P(b.u0, b.t1, b.h1)], colours.top);
 }
 
+/** Overpass geometry, in lane widths: the clearance under the deck and its thickness. */
+const OVERPASS = { depth: 0.07, clearance: 0.62, deck: 0.2 } as const;
+
+/** Screen y of the underside of the overpass deck — cars are clipped below it. */
+export function overpassClipY(v: View, tunnelY: number): number {
+  return v.project(0, tunnelY, v.laneW * OVERPASS.clearance).y;
+}
+
+/**
+ * The overpass that hides the traffic. `mouth` paints the dark opening on the
+ * road (drawn on the ground layer, before any car); `deck` paints the concrete
+ * span over it (drawn in depth order, so barriers in front still overlap it).
+ * Flat colours only.
+ */
+export function drawOverpass(
+  ctx: CanvasRenderingContext2D,
+  v: View,
+  tunnelY: number,
+  part: 'mouth' | 'deck'
+) {
+  const span = v.width * 4;
+  const t1 = tunnelY;
+  const t0 = tunnelY - OVERPASS.depth;
+  const h0 = v.laneW * OVERPASS.clearance;
+  const h1 = h0 + v.laneW * OVERPASS.deck;
+  const P = (u: number, t: number, h: number) => v.project(u, t, h);
+
+  if (part === 'mouth') {
+    // Everything under the deck, from the far side down to the opening.
+    poly(
+      ctx,
+      [P(-span, t0, 0), P(span, t0, 0), P(span, t1, 0), P(span, t1, h0), P(-span, t1, h0), P(-span, t1, 0)],
+      PAL.night
+    );
+    poly(ctx, [P(-span, t0, 0), P(span, t0, 0), P(span, t0, h1), P(-span, t0, h1)], PAL.night);
+    return;
+  }
+
+  drawBox(ctx, v, { u0: -span, u1: span, t0, t1, h0, h1 }, {
+    top: PAL.kerbTop,
+    front: PAL.kerbFace,
+    left: PAL.kerbFace,
+    right: PAL.kerbDark,
+  });
+  // A painted stripe along the face, and a rail on top.
+  poly(
+    ctx,
+    [P(-span, t1, h0 + (h1 - h0) * 0.42), P(span, t1, h0 + (h1 - h0) * 0.42), P(span, t1, h0 + (h1 - h0) * 0.58), P(-span, t1, h0 + (h1 - h0) * 0.58)],
+    PAL.edgeLine
+  );
+  poly(
+    ctx,
+    [P(-span, t1, h1), P(span, t1, h1), P(span, t1, h1 + v.laneW * 0.05), P(-span, t1, h1 + v.laneW * 0.05)],
+    PAL.kerbDark
+  );
+}
+
 /** A quad lying on one face of a box, inset by fractions — windows, lamps. */
 function faceQuad(
   ctx: CanvasRenderingContext2D,
@@ -292,68 +349,40 @@ export interface RoadSpec {
 export function drawRoad(ctx: CanvasRenderingContext2D, v: View, road: RoadSpec) {
   const { width, height } = v;
 
-  // ── Sky over the far end, in three flat steps ──
-  // The road starts a little down the stage; above it is sky, and stepping it
-  // rather than ramping it is what keeps the top of the board clean.
-  const skyBands = [PAL.skyFar, PAL.skyMid, PAL.skyNear];
+  // ── Sky over the far end — one flat colour ──
   const skyFoot = v.project(0, 0).y;
-  for (let i = 0; i < skyBands.length; i += 1) {
-    const y0 = (skyFoot / skyBands.length) * i;
-    px(ctx, 0, y0, width, skyFoot / skyBands.length + PIXEL_SIZE, skyBands[i]);
-  }
+  px(ctx, 0, 0, width, skyFoot + 2, PAL.skyMid);
 
-  // ── Grass, in bands laid across the depth axis ──
-  // Four steps from the haze at the far end down to the near verge. Drawn as
-  // quads in world space so the band edges foreshorten with the road and stay
-  // parallel to it rather than cutting across the perspective.
-  const grassBands = [PAL.grassHaze, PAL.grassFar, PAL.grassMid, PAL.grassNear];
-  const gFar = -0.2;
-  const gNear = 1.25;
-  for (let i = 0; i < grassBands.length; i += 1) {
-    const t0 = gFar + ((gNear - gFar) * i) / grassBands.length;
-    const t1 = gFar + ((gNear - gFar) * (i + 1)) / grassBands.length;
-    // Wide enough to cover the stage at every depth; the road is laid over it.
-    const spread = width * 4;
-    pxQuad(
-      ctx,
-      [
-        v.project(-spread, t0),
-        v.project(spread, t0),
-        v.project(spread, t1),
-        v.project(-spread, t1),
-      ],
-      grassBands[i]
-    );
-  }
+  // ── Grass — one flat colour under the whole stage; the road is laid over it.
+  // Drawn as a quad in world space so its far edge meets the sky along the
+  // road's own horizon.
+  const spread = width * 4;
+  pxQuad(
+    ctx,
+    [v.project(-spread, -0.2), v.project(spread, -0.2), v.project(spread, 1.25), v.project(-spread, 1.25)],
+    PAL.grassMid
+  );
 
   const roadL = v.laneLeft(road.firstLane);
   const roadR = v.laneLeft(road.lastLane + 1);
   const far = -0.15;
   const near = 1.2;
 
-  // ── Asphalt, in the same banded scheme ──
-  // Four steps rather than a three-stop gradient. Each band is a flat colour
-  // from the palette, so the quantiser has nothing left to do to it.
-  const roadBands = [PAL.roadHaze, PAL.roadFar, PAL.roadMid, PAL.roadNear];
-  for (let i = 0; i < roadBands.length; i += 1) {
-    const t0 = far + ((near - far) * i) / roadBands.length;
-    const t1 = far + ((near - far) * (i + 1)) / roadBands.length;
+  // ── Asphalt — one flat colour, every other lane one shade off so the lanes
+  // stay countable at the far end where the dashes thin out.
+  pxQuad(
+    ctx,
+    [v.project(roadL, far), v.project(roadR, far), v.project(roadR, near), v.project(roadL, near)],
+    PAL.roadMid
+  );
+  for (let lane = road.firstLane; lane <= road.lastLane; lane += 2) {
+    const l0 = v.laneLeft(lane);
+    const l1 = l0 + v.laneW;
     pxQuad(
       ctx,
-      [v.project(roadL, t0), v.project(roadR, t0), v.project(roadR, t1), v.project(roadL, t1)],
-      roadBands[i]
+      [v.project(l0, far), v.project(l1, far), v.project(l1, near), v.project(l0, near)],
+      PAL.roadBand
     );
-    // Every other lane one step darker, so the lanes stay countable at the far
-    // end where the dashes have thinned to nothing.
-    for (let lane = road.firstLane; lane <= road.lastLane; lane += 2) {
-      const l0 = v.laneLeft(lane);
-      const l1 = l0 + v.laneW;
-      pxQuad(
-        ctx,
-        [v.project(l0, t0), v.project(l1, t0), v.project(l1, t1), v.project(l0, t1)],
-        i >= roadBands.length - 2 ? PAL.roadBand : roadBands[i]
-      );
-    }
   }
 
   // Lane dividers: dashes laid on the asphalt, so they foreshorten with it.
@@ -362,12 +391,10 @@ export function drawRoad(ctx: CanvasRenderingContext2D, v: View, road: RoadSpec)
     const u = v.laneLeft(lane);
     for (let t = -0.1; t < 1.15; t += 0.1) {
       const t1 = t + 0.055;
-      // Dashes dim with distance in one step rather than fading, and snap to
-      // the grid so a dash is a clean block instead of a grey smear.
       pxQuad(
         ctx,
         [v.project(u - lineW / 2, t), v.project(u + lineW / 2, t), v.project(u + lineW / 2, t1), v.project(u - lineW / 2, t1)],
-        t < 0.35 ? PAL.paintDim : PAL.paint
+        PAL.paint
       );
     }
   }
@@ -409,29 +436,11 @@ export function drawRoad(ctx: CanvasRenderingContext2D, v: View, road: RoadSpec)
 }
 
 /**
- * Atmosphere, painted last: haze thickening toward the far end, and a soft
- * vignette. The haze is what makes the far lanes read as *far* rather than
- * as small, and it swallows cars as they spawn so none pops in.
+ * Atmosphere — deliberately empty now. The stepped haze bands that used to sit
+ * over the far end read as a gradient; the board is flat colour throughout.
+ * Kept as a hook so the render order in ChickenRoad.tsx does not change.
  */
-export function drawAtmosphere(ctx: CanvasRenderingContext2D, v: View) {
-  const { width } = v;
-  const fogEnd = v.project(0, 0.3).y;
-
-  // Four flat scanline steps instead of a ramp. The old 92%-opacity gradient
-  // was what turned the top of the board into grey mud once it had been
-  // quantised: a smooth alpha ramp over a banded road quantises twice, and the
-  // two sets of bands beat against each other. Stepping the alpha means each
-  // row resolves to exactly one colour.
-  const steps = [0.62, 0.4, 0.22, 0.09];
-  for (let i = 0; i < steps.length; i += 1) {
-    const y0 = (fogEnd / steps.length) * i;
-    px(ctx, 0, y0, width, fogEnd / steps.length + PIXEL_SIZE, `rgba(198,220,236,${steps[i]})`);
-  }
-
-  // No vignette. A radial darkening is a gradient in two axes at once, and it
-  // is what put the soft grey corners on a board whose whole look depends on
-  // flat colour; the banded road already carries the depth it was there for.
-}
+export function drawAtmosphere(_ctx: CanvasRenderingContext2D, _v: View) {}
 
 // ─────────────────────────────────────────────
 // Manhole covers — the multiplier ladder
@@ -672,14 +681,11 @@ export function drawChickenShadow(
   const rx = size * 0.42 * s * spread + Math.abs(castFrom.u - u) * s * 0.35;
   const ry = size * 0.12 * s * spread;
   const alpha = 0.34 / spread;
-  const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, rx);
-  g.addColorStop(0, `rgba(8,12,20,${alpha})`);
-  g.addColorStop(1, 'rgba(8,12,20,0)');
   ctx.save();
   ctx.translate(c.x, c.y);
   ctx.scale(1, ry / rx);
   ctx.translate(-c.x, -c.y);
-  ctx.fillStyle = g;
+  ctx.fillStyle = `rgba(8,12,20,${alpha * 0.6})`;
   ctx.beginPath();
   ctx.arc(c.x, c.y, rx, 0, Math.PI * 2);
   ctx.fill();
@@ -746,6 +752,118 @@ export function drawChickenSprite(
   const drawH = boxH;
   const drawW = boxH * aspect;
   ctx.drawImage(sprite.canvas, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
+}
+
+/**
+ * The rooster drawn as smooth vector shapes — no pixel grid, no image. Facing
+ * right, the direction it crosses in. Centred on (cx, cy) in a box `boxH` tall
+ * with its feet 0.45 of the box below the centre, the same anchor the pixel
+ * versions used, so the hop, the shadow and the tap target all line up.
+ *
+ * The silhouette (tail, body, head) is drawn twice: once with a thick dark
+ * stroke as the outline, then filled on top, so the joins between the shapes
+ * vanish and only the outer edge keeps its line. Flat colours throughout.
+ */
+export function drawChickenSmooth(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  boxH: number,
+  timeSeconds: number
+) {
+  const u = boxH;
+  const bob = Math.sin(timeSeconds * 6) * u * 0.012;
+  const y = cy + bob;
+  const flap = Math.sin(timeSeconds * 9) * 0.12;
+  const OUTLINE = '#2c3442';
+  const WHITE = '#fbfbf7';
+  const SHADE = '#e4e8ef';
+  const RED = '#e2434b';
+  const ORANGE = '#f2a52c';
+
+  const ellipse = (x: number, yy: number, rx: number, ry: number, rot = 0) => {
+    ctx.beginPath();
+    ctx.ellipse(x, yy, rx, ry, rot, 0, Math.PI * 2);
+  };
+  const circle = (x: number, yy: number, r: number) => {
+    ctx.beginPath();
+    ctx.arc(x, yy, r, 0, Math.PI * 2);
+  };
+
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  // ── Legs and feet ──
+  const footY = cy + u * 0.45;
+  ctx.strokeStyle = ORANGE;
+  ctx.lineWidth = Math.max(1.5, u * 0.045);
+  for (const dx of [-0.07, 0.07]) {
+    const lx = cx + dx * u;
+    ctx.beginPath();
+    ctx.moveTo(lx, y + u * 0.2);
+    ctx.lineTo(lx, footY);
+    ctx.moveTo(lx - u * 0.05, footY);
+    ctx.lineTo(lx + u * 0.08, footY);
+    ctx.stroke();
+  }
+
+  // ── Silhouette: outline pass, then fill pass ──
+  const tail = () => ellipse(cx - u * 0.3, y - u * 0.1, u * 0.14, u * 0.2, -0.5);
+  const body = () => ellipse(cx - u * 0.02, y + u * 0.02, u * 0.33, u * 0.25);
+  const head = () => circle(cx + u * 0.2, y - u * 0.24, u * 0.16);
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = Math.max(2, u * 0.05);
+  for (const shape of [tail, body, head]) {
+    shape();
+    ctx.stroke();
+  }
+  ctx.fillStyle = WHITE;
+  for (const shape of [tail, body, head]) {
+    shape();
+    ctx.fill();
+  }
+
+  // Belly shade, low on the body — a second flat colour, not a gradient.
+  ellipse(cx - u * 0.02, y + u * 0.13, u * 0.24, u * 0.1);
+  ctx.fillStyle = SHADE;
+  ctx.fill();
+
+  // ── Wing, with a little flap ──
+  ellipse(cx - u * 0.06, y + u * 0.02, u * 0.17, u * 0.11, -0.25 + flap);
+  ctx.fillStyle = SHADE;
+  ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = Math.max(1, u * 0.025);
+  ctx.stroke();
+
+  // ── Comb and wattle ──
+  ctx.fillStyle = RED;
+  for (const [dx, dy, r] of [[0.12, -0.39, 0.055], [0.2, -0.43, 0.065], [0.28, -0.38, 0.05]] as const) {
+    circle(cx + dx * u, y + dy * u, r * u);
+    ctx.fill();
+  }
+  ellipse(cx + u * 0.32, y - u * 0.13, u * 0.04, u * 0.06);
+  ctx.fill();
+
+  // ── Beak ──
+  ctx.beginPath();
+  ctx.moveTo(cx + u * 0.33, y - u * 0.28);
+  ctx.lineTo(cx + u * 0.47, y - u * 0.22);
+  ctx.lineTo(cx + u * 0.33, y - u * 0.17);
+  ctx.closePath();
+  ctx.fillStyle = ORANGE;
+  ctx.fill();
+
+  // ── Eye with a highlight ──
+  circle(cx + u * 0.24, y - u * 0.27, u * 0.035);
+  ctx.fillStyle = OUTLINE;
+  ctx.fill();
+  circle(cx + u * 0.25, y - u * 0.28, u * 0.012);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  ctx.restore();
 }
 
 /**

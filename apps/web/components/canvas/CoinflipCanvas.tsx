@@ -9,7 +9,6 @@ import {
 } from '@/lib/useCanvasRenderer';
 
 import {
-  ACCENT,
   BOARD,
   FONT,
   GOLD,
@@ -17,12 +16,13 @@ import {
   GOLD_SOFT,
   NEG,
   POS,
+  TABLES,
   alpha,
   drawBackdrop,
   drawFloorShadow,
-  drawVignette,
   floorEllipse,
   makeScene,
+  neu,
   shade,
   type Scene,
 } from './three';
@@ -54,6 +54,7 @@ const SPIN_RATE = 900;
 const LAND_MS = 1150;
 const MIN_LANDING_TURNS = 3;
 const COIN_THICKNESS = 9;
+const THEME = TABLES.coinflip;
 
 export function CoinflipCanvas({
   pick,
@@ -149,18 +150,24 @@ export function CoinflipCanvas({
 
         const win = settled && flight ? flight.win : null;
         drawBackdrop(ctx, scene, {
-          glow: win === null ? ACCENT : win ? POS : NEG,
+          theme: THEME,
+          glow: win === null ? THEME.hue : win ? POS : NEG,
           glowStrength: settled ? 0.15 : 0.09,
         });
 
-        // The coin's plinth, so a landed coin has something to land on.
+        // The coin's plinth, so a landed coin has something to land on: a
+        // disc of the table's own surface, raised out of it by its shadows.
         const pad = floorEllipse(scene, x, y, radius * 1.7);
+        neu(ctx, () => {
+          ctx.beginPath();
+          ctx.ellipse(pad.cx, pad.cy, pad.rx, pad.ry, 0, 0, Math.PI * 2);
+          ctx.fillStyle = THEME.surface;
+          ctx.fill();
+        }, 1.4);
         ctx.beginPath();
-        ctx.ellipse(pad.cx, pad.cy, pad.rx, pad.ry, 0, 0, Math.PI * 2);
-        ctx.fillStyle = shade(BOARD.floor, 0.06);
-        ctx.fill();
-        ctx.strokeStyle = BOARD.line2;
-        ctx.lineWidth = 1;
+        ctx.ellipse(pad.cx, pad.cy, pad.rx * 0.9, pad.ry * 0.9, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = alpha(THEME.hue, 0.28);
+        ctx.lineWidth = 1.5;
         ctx.stroke();
 
         drawFloorShadow(ctx, scene, x, y, radius * (z > 1 ? 0.8 : 1), z, z > 1 ? 0.7 : 1);
@@ -176,7 +183,6 @@ export function CoinflipCanvas({
           ctx.fillText(settled ? `LANDED ${caption}` : `YOUR PICK · ${caption}`, at.x, at.y);
         }
 
-        drawVignette(ctx, scene);
       },
     [pick, spinning, flight, reducedMotion]
   );
@@ -232,28 +238,23 @@ function drawCoin(
 
   // Rim first: the same ellipse dropped by the coin's thickness, plus the band
   // between the two — that band is the only thing that says "this has depth".
-  if (edgeH > 0.5) {
-    ctx.beginPath();
-    ctx.ellipse(centre.x, centre.y + edgeH, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fillStyle = shade(GOLD_DEEP, -0.25);
-    ctx.fill();
-    ctx.fillStyle = shade(GOLD_DEEP, -0.1);
-    ctx.fillRect(centre.x - rx, centre.y, rx * 2, edgeH);
-  }
+  neu(ctx, () => {
+    if (edgeH > 0.5) {
+      ctx.beginPath();
+      ctx.ellipse(centre.x, centre.y + edgeH, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fillStyle = shade(GOLD_DEEP, -0.25);
+      ctx.fill();
+      ctx.fillStyle = shade(GOLD_DEEP, -0.1);
+      ctx.fillRect(centre.x - rx, centre.y, rx * 2, edgeH);
+    }
 
-  const face = ctx.createLinearGradient(
-    centre.x - rx * 0.6,
-    centre.y - ry,
-    centre.x + rx * 0.7,
-    centre.y + ry
-  );
-  face.addColorStop(0, GOLD_SOFT);
-  face.addColorStop(0.5, GOLD);
-  face.addColorStop(1, GOLD_DEEP);
+    ctx.beginPath();
+    ctx.ellipse(centre.x, centre.y, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = GOLD;
+    ctx.fill();
+  }, 0.8);
   ctx.beginPath();
   ctx.ellipse(centre.x, centre.y, rx, ry, 0, 0, Math.PI * 2);
-  ctx.fillStyle = face;
-  ctx.fill();
   ctx.strokeStyle = alpha(GOLD_SOFT, 0.7);
   ctx.lineWidth = 1;
   ctx.stroke();

@@ -53,15 +53,16 @@ export interface TrafficMode {
  * Difficulty is the hazard rate, so the selector reads as "how much traffic".
  * Spawn gap and speed rise with it, which is what keeps the board looking like
  * the odds it is paying. Speeds are lane lengths per second: the far end to the
- * near end in about a second and a half on medium, and a little under a second
- * on extreme — a third quicker than the board first shipped with, which read as
- * sedate for a game whose whole tension is the gap between two cars.
+ * near end in about a second on medium and well under half a second on
+ * hardcore — roughly a third quicker again than the previous tuning, with the
+ * gaps between cars cut to match, so the board looks as hard as it now pays.
  */
 export const TRAFFIC_MODES: readonly TrafficMode[] = [
-  mode('low', [2.2, 3.4], [0.47, 0.68]),
-  mode('medium', [1.5, 2.5], [0.57, 0.81]),
-  mode('high', [0.9, 1.6], [0.73, 1.04]),
-  mode('extreme', [0.5, 1.0], [0.91, 1.3]),
+  mode('low', [1.7, 2.7], [0.64, 0.92]),
+  mode('medium', [1.1, 1.9], [0.78, 1.1]),
+  mode('high', [0.7, 1.2], [0.98, 1.4]),
+  mode('extreme', [0.4, 0.8], [1.22, 1.75]),
+  mode('hardcore', [0.25, 0.55], [1.5, 2.15]),
 ] as const;
 
 /** The hazard is the server's; only the traffic's look is chosen here. */
@@ -77,15 +78,13 @@ function mode(
 export const DEFAULT_MODE = TRAFFIC_MODES[1];
 
 /**
- * The board's art resolution: one art pixel is a PIXEL_SIZE-square block of
- * screen pixels. The world is rendered into a buffer this many times smaller
- * and blitted back with smoothing off (see `useCanvasRenderer`).
- *
- * 4 is the size where the road markings, the cars and the chicken all survive:
- * at 6 the chicken loses its beak and the lane covers turn into discs, and at 2
- * the picture reads as "slightly crunchy" rather than as pixel art.
+ * The board's art resolution. 1 renders at full resolution with no grid
+ * snapping, so cars glide instead of stepping a block at a time and the board
+ * reads smooth. Above 1 the world is rendered into a buffer this many times
+ * smaller and blitted back with smoothing off (see `useCanvasRenderer`) for a
+ * pixel-art look — 4 was the old setting.
  */
-export const PIXEL_SIZE = 4;
+export const PIXEL_SIZE = 1;
 
 /**
  * Steps per colour channel after pixelation — now off.
@@ -118,6 +117,12 @@ export const LAYOUT = {
   chickenY: 0.6,
   /** Where a gate stops downward traffic, and (mirrored) upward traffic. */
   gateY: 0.42,
+  /**
+   * The near edge of the overpass. Traffic runs under it and is hidden until
+   * it comes out the other side, just short of the gates — so a car is only
+   * seen once it is close to the crossing, not from the far end of the road.
+   */
+  tunnelY: 0.3,
 } as const;
 
 /**

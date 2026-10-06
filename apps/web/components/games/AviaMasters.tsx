@@ -9,20 +9,26 @@ import { useInjectedStyles } from '@/lib/useInjectedStyles';
 import {
   compareDecimal,
   formatDecimalString,
+  fromUnits,
   isDecimalString,
   safeDecimal,
   sanitizeDecimalInput,
   toFixedDecimal,
+  toUnits,
 } from '@/lib/decimal';
+import { aviaLandingChance, aviaSafeLandingMaxStake } from '@/lib/verify';
 import { useLanguage } from '@/components/providers/LanguageProvider';
+import { AVIA, BET_LIMITS, type AviaMode, type AviaSpotId } from '@frigat/shared/constants';
 
 import {
   GAME_CONFIG,
   ON_DECK,
   PICKUPS,
+  SPEEDS,
   altitudeAt,
   formatMetres,
   formatMultiplier,
+  paceFor,
   payoutFor,
   planFlight,
   specFor,
@@ -34,8 +40,11 @@ import {
   drawBomb,
   drawCarrier,
   drawFinishMarker,
+  drawIsland,
   drawPickup,
   drawPlane,
+  drawRig,
+  drawSpotTag,
 } from './aviaMasters/draw';
 import { CSS, STYLE_ID } from './aviaMasters/styles';
 
@@ -106,7 +115,11 @@ interface Settlement {
   landed: boolean;
   multiplier: number;
   payout: string;
+  spot: AviaSpotId | null;
 }
+
+/** The flat safe-landing fee, as a decimal string for exact maths. */
+const SAFE_FEE = AVIA.safeLanding.fee.toFixed(2);
 
 
 // ─────────────────────────────────────────────
@@ -121,6 +134,15 @@ export default function AviaMasters() {
 
   const [phase, setPhase] = useState<Phase>('IDLE');
   const [bet, setBet] = useState('10.00');
+  const [mode, setMode] = useState<AviaMode>('fast');
+  /** Pay the flat fee for a guaranteed landing — small stakes only. */
+  const [safe, setSafe] = useState(false);
+  const modeRef = useRef<AviaMode>('fast');
+  modeRef.current = mode;
+  // The render loop's call-outs are drawn on the canvas, outside React, so it
+  // reads the translator through a ref rather than restarting on a locale swap.
+  const tRef = useRef(t);
+  tRef.current = t;
   const [settled, setSettled] = useState<Settlement | null>(null);
   /** Why the last Fly press was refused, if it was. */
   const [serverError, setServerError] = useState<string | null>(null);
@@ -171,24 +193,37 @@ export default function AviaMasters() {
   // `Number.isNaN(Number(bet))` does not catch them: `Number("1.")` is 1, so
   // the old guard waved a trailing dot straight into `compareDecimal`, which
   // threw during render and took the board down.
-  const safeBet = useMemo(() => safeDecimal(bet, GAME_CONFIG.minBet), [bet]);
+  // A safe landing caps the stake below a dollar, so it drops to the server's
+  // own minimum rather than the board's usual one.
+  const minBet = safe ? BET_LIMITS.min : GAME_CONFIG.minBet;
+  const safeBet = useMemo(() => safeDecimal(bet, minBet), [bet, minBet]);
+  /** The largest stake a safe landing covers at this speed — the server's cap. */
+  const safeCap = useMemo(() => toFixedDecimal(String(aviaSafeLandingMaxStake(mode)), 2), [mode]);
+  /** What leaves the wallet: the stake, plus the fee on a safe landing. */
+  const charged = useMemo(
+    () => (safe ? fromUnits(toUnits(safeBet) + toUnits(SAFE_FEE)) : safeBet),
+    [safe, safeBet]
+  );
 
   const betError = useMemo(() => {
-    if (!isDecimalString(bet.trim())) return 'Enter a valid amount';
-    if (compareDecimal(safeBet, GAME_CONFIG.minBet) < 0) {
-      return `Minimum bet is $${formatDecimalString(GAME_CONFIG.minBet, 2)}`;
+    if (!isDecimalString(bet.trim())) return t('gameUi.aviaInvalidAmount');
+    if (compareDecimal(safeBet, minBet) < 0) {
+      return t('gameUi.aviaMinBet', { amount: `$${formatDecimalString(minBet, 2)}` });
     }
     if (compareDecimal(safeBet, GAME_CONFIG.maxBet) > 0) {
-      return `Maximum bet is $${formatDecimalString(GAME_CONFIG.maxBet, 2)}`;
+      return t('gameUi.aviaMaxBet', { amount: `$${formatDecimalString(GAME_CONFIG.maxBet, 2)}` });
+    }
+    if (safe && compareDecimal(safeBet, safeCap) > 0) {
+      return t('gameUi.aviaSafeCap', { amount: `$${safeCap}` });
     }
     // Only meaningful once a balance has actually arrived; before that the
     // wallet is unknown rather than empty, and blocking play on "unknown" would
     // lock the board on a slow socket.
-    if (balance.hasSynced && balance.balance && compareDecimal(safeBet, balance.balance) > 0) {
-      return 'Not enough balance — deposit to keep playing';
+    if (balance.hasSynced && balance.balance && compareDecimal(charged, balance.balance) > 0) {
+      return t('gameUi.aviaNoBalance');
     }
     return null;
-  }, [bet, safeBet, balance.hasSynced, balance.balance]);
+  }, [bet, safeBet, minBet, safe, safeCap, charged, balance.hasSynced, balance.balance, t]);
 
   // What the flight would pay right now. Once it has ditched it pays nothing,
   // whatever it collected on the way down.
@@ -255,7 +290,7 @@ export default function AviaMasters() {
         y: screenY - 26,
         life: 0,
         maxLife: 1.15,
-        text: 'ROCKET!',
+        text: tRef.current('gameUi.aviaCallBomb'),
         // The honest number: what the hit actually took off the multiplier.
         sub: `−${multiplierLost.toFixed(2)}x`,
         good: false,
@@ -271,13 +306,18 @@ export default function AviaMasters() {
     autoSettle: false,
     onResult: ({ raw }) => {
       if (phaseRef.current !== 'WAITING') return;
-      const data = (raw.resultData ?? {}) as { landed?: boolean; events?: ServerEvent[] };
-      const plan = planFlight(data.events ?? [], Boolean(data.landed));
+      const data = (raw.resultData ?? {}) as {
+        landed?: boolean;
+        events?: ServerEvent[];
+        spot?: AviaSpotId | null;
+      };
+      const plan = planFlight(data.events ?? [], Boolean(data.landed), data.spot ?? null);
       planRef.current = plan;
       resultRef.current = {
         landed: plan.landed,
         multiplier: typeof raw.multiplier === 'number' ? raw.multiplier : 0,
         payout: typeof raw.payout === 'string' ? raw.payout : '0',
+        spot: plan.spot?.id ?? null,
       };
       eventAgeRef.current = plan.events.map(() => -1);
       flightClockRef.current = 0;
@@ -328,9 +368,9 @@ export default function AviaMasters() {
     placeBet('BET', {
       amount: toFixedDecimal(safeBet, 2),
       currency: balance.currency,
-      params: {},
+      params: { mode, safe },
     });
-  }, [betError, busy, balance.balance, balance.currency, placeBet, safeBet, setPhaseBoth]);
+  }, [betError, busy, balance.balance, balance.currency, placeBet, safeBet, mode, safe, setPhaseBoth]);
 
   /** The board, Space and Enter all do one thing: launch when grounded. */
   const onCanvasPointerDown = useCallback(
@@ -384,7 +424,7 @@ export default function AviaMasters() {
         flightClockRef.current += dt;
         // The catapult: ease up to cruise instead of leaving at full speed.
         const launchT = Math.min(1, flightClockRef.current / GAME_CONFIG.catapultSeconds);
-        const speed = GAME_CONFIG.cruiseSpeed * (0.35 + 0.65 * launchT);
+        const speed = GAME_CONFIG.cruiseSpeed * paceFor(modeRef.current) * (0.35 + 0.65 * launchT);
         const before = distanceRef.current;
         distanceRef.current = Math.min(plan.endX, before + speed * dt);
         altitudeRef.current = altitudeAt(plan, distanceRef.current);
@@ -422,13 +462,16 @@ export default function AviaMasters() {
           if (plan.landed) {
             landingStartedRef.current = now;
             burst(planeX, deckY, 14, 130);
+            const bonus = plan.spot && plan.spot.mul !== 1 ? ` ×${plan.spot.mul}` : '';
             floatersRef.current.push({
               x: planeX,
               y: deckY - 46,
               life: 0,
               maxLife: 1.4,
-              text: 'TOUCHDOWN',
-              sub: `${formatMultiplier(multiplierRef.current)} banked`,
+              text: tRef.current('gameUi.aviaCallTouchdown'),
+              sub: tRef.current('gameUi.aviaCallBanked', {
+                multiplier: `${formatMultiplier(multiplierRef.current)}${bonus}`,
+              }),
               good: true,
             });
             setPhaseBoth('LANDING');
@@ -445,8 +488,8 @@ export default function AviaMasters() {
               y: seaY - 42,
               life: 0,
               maxLife: 1.3,
-              text: 'SPLASHDOWN',
-              sub: 'Short of the deck',
+              text: tRef.current('gameUi.aviaCallSplash'),
+              sub: tRef.current('gameUi.aviaCallShort'),
               good: false,
             });
             settleRoundRef.current();
@@ -459,7 +502,8 @@ export default function AviaMasters() {
         const eased = 1 - Math.pow(1 - t, 3);
         // Roll forward along the deck and stop, rather than freezing the
         // instant the wheels touch.
-        distanceRef.current = plan.endX + GAME_CONFIG.carrierLength * 0.4 * eased;
+        const rollout = (plan.spot?.length ?? GAME_CONFIG.carrierLength) * 0.4;
+        distanceRef.current = plan.endX + rollout * eased;
         altitudeRef.current = ON_DECK;
         if (t >= 1) settleRoundRef.current();
       }
@@ -516,11 +560,7 @@ export default function AviaMasters() {
       }
 
       // Sky
-      const sky = ctx.createLinearGradient(0, 0, 0, seaY);
-      sky.addColorStop(0, '#0b2545');
-      sky.addColorStop(0.55, '#1d4e89');
-      sky.addColorStop(1, '#4a90c2');
-      ctx.fillStyle = sky;
+      ctx.fillStyle = '#1d4e89';
       ctx.fillRect(-20, -20, width + 40, seaY + 20);
 
       // Parallax clouds, tied to distance so they scroll with the run
@@ -539,10 +579,7 @@ export default function AviaMasters() {
       }
 
       // Sea
-      const sea = ctx.createLinearGradient(0, seaY, 0, height);
-      sea.addColorStop(0, '#0e4a6b');
-      sea.addColorStop(1, '#062033');
-      ctx.fillStyle = sea;
+      ctx.fillStyle = '#0e4a6b';
       ctx.fillRect(-20, seaY, width + 40, height - seaY + 20);
 
       // Swell
@@ -568,12 +605,22 @@ export default function AviaMasters() {
         drawCarrier(ctx, launchX, deckY, seaY, carrierPx, '#e0b055');
       }
 
-      // Finish carrier and its flag, on the same baseline as the launch deck.
+      // The landing spots, on the same baseline as the launch deck: carrier,
+      // island, oil rig — each tagged with its bonus. The one the flight comes
+      // down on carries the finish flag.
       if (plan) {
-        const finishLeft = toScreenX(plan.finishX - GAME_CONFIG.carrierLength / 2);
-        if (finishLeft < width + 40 && finishLeft + carrierPx > -40) {
-          drawCarrier(ctx, finishLeft, deckY, seaY, carrierPx, '#22c55e');
-          drawFinishMarker(ctx, finishLeft + carrierPx * 0.9, deckY, scale, waveRef.current);
+        for (const spot of plan.spots) {
+          const left = toScreenX(spot.left);
+          const spotPx = spot.length * pxPerMetre;
+          if (left > width + 40 || left + spotPx < -40) continue;
+          const accent = spot.id === 'rig' ? '#f0b54a' : spot.id === 'island' ? '#86efac' : '#22c55e';
+          if (spot.id === 'carrier') drawCarrier(ctx, left, deckY, seaY, spotPx, accent);
+          else if (spot.id === 'island') drawIsland(ctx, left, deckY, seaY, spotPx, accent);
+          else drawRig(ctx, left, deckY, seaY, spotPx, accent);
+          drawSpotTag(ctx, left + spotPx / 2, deckY, scale, `×${spot.mul}`, accent);
+          if (plan.spot === spot) {
+            drawFinishMarker(ctx, left + spotPx * 0.9, deckY, scale, waveRef.current);
+          }
         }
       }
 
@@ -700,7 +747,7 @@ export default function AviaMasters() {
   const shownBalance = isAirborne && launchBalance !== null ? launchBalance : balance.balance;
 
   return (
-    <div className="avia">
+    <div className="avia neu">
       {/* ---------- Stage ---------- */}
       <div className="avia__stage">
         {/* A tap on the board launches when the plane is on deck. There is
@@ -742,6 +789,7 @@ export default function AviaMasters() {
             {settled.landed ? (
               <>
                 {t('gameUi.aviaLanded', { multiplier: formatMultiplier(settled.multiplier) })}
+                {settled.spot && <small>{t(`gameUi.aviaSpot_${settled.spot}`)}</small>}
                 <small>+${formatDecimalString(settled.payout, 2)}</small>
               </>
             ) : (
@@ -804,9 +852,70 @@ export default function AviaMasters() {
               aria-label={t('gameUi.maxBet')}
               onClick={maxStake}
             >
-              Max
+              {t('gameUi.max')}
             </button>
           </div>
+        </div>
+
+        <div>
+          <div className="avia__label">
+            <span>{t('gameUi.aviaSpeed')}</span>
+            <b>
+              {t('gameUi.aviaLandChance', {
+                percent: `${(aviaLandingChance(mode) * 100).toFixed(1)}%`,
+              })}
+            </b>
+          </div>
+          {/* Faster planes meet more bombs and richer bubbles and land less
+              often; the edge is the same at every speed. */}
+          <div className="avia__speeds">
+            {SPEEDS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`avia__speed${s.id === mode ? ' avia__speed--on' : ''}`}
+                aria-pressed={s.id === mode}
+                disabled={isAirborne}
+                onClick={() => {
+                  setMode(s.id);
+                  if (safe) {
+                    const cap = toFixedDecimal(String(aviaSafeLandingMaxStake(s.id)), 2);
+                    if (compareDecimal(safeBet, cap) > 0) setBet(cap);
+                  }
+                }}
+              >
+                <span>{t(`gameUi.aviaSpeed_${s.id}`)}</span>
+                <small>{(aviaLandingChance(s.id) * 100).toFixed(1)}%</small>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <label className={`avia__safe${safe ? ' avia__safe--on' : ''}`}>
+          <input
+            type="checkbox"
+            checked={safe}
+            disabled={isAirborne}
+            onChange={(event) => {
+              const on = event.target.checked;
+              setSafe(on);
+              // Bring the stake inside the cover rather than leaving the
+              // player to find the limit by hitting it.
+              if (on && compareDecimal(safeBet, safeCap) > 0) setBet(safeCap);
+            }}
+          />
+          <span className="avia__safe-text">
+            <b>{t('gameUi.aviaSafeTitle', { fee: `$${SAFE_FEE}` })}</b>
+            <small>{t('gameUi.aviaSafeBody', { amount: `$${safeCap}` })}</small>
+          </span>
+        </label>
+
+        <div className="avia__spots" aria-label={t('gameUi.aviaSpotsLabel')}>
+          {AVIA.spots.map((spot) => (
+            <span key={spot.id} className={`avia__spot avia__spot--${spot.id}`}>
+              {t(`gameUi.aviaSpot_${spot.id}`)} <b>×{spot.mul}</b>
+            </span>
+          ))}
         </div>
 
         <div className="avia__legend" aria-hidden="true">
@@ -852,6 +961,11 @@ export default function AviaMasters() {
             disabled={betError !== null || busy}
           >
             {isOver ? t('gameUi.aviaFlyAgain') : t('gameUi.aviaFly')}
+            {safe && (
+              <small className="avia__action-sub">
+                {t('gameUi.aviaChargeNote', { amount: `$${formatDecimalString(charged, 2)}` })}
+              </small>
+            )}
           </button>
         )}
 

@@ -11,6 +11,7 @@
  */
 
 import type { Scene, ScreenPoint } from './scene';
+import { NEU } from './palette';
 
 // ─────────────────────────────────────────────
 // Colour
@@ -45,6 +46,91 @@ function parseHex(hex: string): { r: number; g: number; b: number } {
   const n = parseInt(body, 16);
   if (!Number.isFinite(n)) return { r: 0, g: 0, b: 0 };
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+// ─────────────────────────────────────────────
+// Neumorphic lift
+// ─────────────────────────────────────────────
+
+/**
+ * Draws a solid as if pressed up out of the surface: `paint` runs once under
+ * the dark shadow (down-right), once under the light one (up-left), then once
+ * clean so neither shadow bleeds over the solid itself. Shadows are soft
+ * blurs, not gradients.
+ *
+ * Shadow offsets and blur ignore the context transform, so they are scaled by
+ * it here — otherwise a retina canvas gets shadows half the size.
+ */
+export function neu(
+  ctx: CanvasRenderingContext2D,
+  paint: () => void,
+  depth = 1
+): void {
+  if (depth <= 0) {
+    paint();
+    return;
+  }
+  const k = ctx.getTransform().a || 1;
+  const d = NEU.offset * depth * k;
+  ctx.save();
+  ctx.shadowBlur = d * 2.2;
+  ctx.shadowColor = NEU.dark;
+  ctx.shadowOffsetX = d;
+  ctx.shadowOffsetY = d;
+  paint();
+  ctx.shadowColor = NEU.light;
+  ctx.shadowOffsetX = -d;
+  ctx.shadowOffsetY = -d;
+  paint();
+  ctx.restore();
+  paint();
+}
+
+/**
+ * The pressed counterpart of `neu`: fills `path` and sinks it into the surface.
+ * A ring around the path is filled outside the clip, so only its shadows land
+ * inside — dark along the top-left inner edge, light along the bottom-right.
+ */
+export function neuInset(
+  ctx: CanvasRenderingContext2D,
+  path: Path2D,
+  fill: string,
+  depth = 1
+): void {
+  const k = ctx.getTransform().a || 1;
+  const d = NEU.offset * depth * k;
+  const ring = new Path2D();
+  ring.rect(-1e4, -1e4, 2e4, 2e4);
+  ring.addPath(path);
+
+  ctx.save();
+  ctx.fillStyle = fill;
+  ctx.fill(path);
+  ctx.clip(path);
+  ctx.fillStyle = '#000';
+  ctx.shadowBlur = d * 2;
+  ctx.shadowColor = NEU.dark;
+  ctx.shadowOffsetX = d;
+  ctx.shadowOffsetY = d;
+  ctx.fill(ring, 'evenodd');
+  ctx.shadowColor = NEU.light;
+  ctx.shadowOffsetX = -d;
+  ctx.shadowOffsetY = -d;
+  ctx.fill(ring, 'evenodd');
+  ctx.restore();
+}
+
+/** A rounded rectangle as a reusable path — for `neu` and `neuInset`. */
+export function roundRectPath(x: number, y: number, w: number, h: number, r: number): Path2D {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  const p = new Path2D();
+  p.moveTo(x + radius, y);
+  p.arcTo(x + w, y, x + w, y + h, radius);
+  p.arcTo(x + w, y + h, x, y + h, radius);
+  p.arcTo(x, y + h, x, y, radius);
+  p.arcTo(x, y, x + w, y, radius);
+  p.closePath();
+  return p;
 }
 
 // ─────────────────────────────────────────────
@@ -109,17 +195,20 @@ export function drawBox(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
   b: Box,
-  colours: FaceColours
+  colours: FaceColours,
+  lift = 1
 ): void {
   const P = scene.project;
-  if (b.x0 > scene.vanishX) {
-    poly(ctx, [P(b.x0, b.y0, b.z0), P(b.x0, b.y1, b.z0), P(b.x0, b.y1, b.z1), P(b.x0, b.y0, b.z1)], colours.left);
-  }
-  if (b.x1 < scene.vanishX) {
-    poly(ctx, [P(b.x1, b.y0, b.z0), P(b.x1, b.y1, b.z0), P(b.x1, b.y1, b.z1), P(b.x1, b.y0, b.z1)], colours.right);
-  }
-  poly(ctx, [P(b.x0, b.y1, b.z0), P(b.x1, b.y1, b.z0), P(b.x1, b.y1, b.z1), P(b.x0, b.y1, b.z1)], colours.front);
-  poly(ctx, [P(b.x0, b.y0, b.z1), P(b.x1, b.y0, b.z1), P(b.x1, b.y1, b.z1), P(b.x0, b.y1, b.z1)], colours.top);
+  neu(ctx, () => {
+    if (b.x0 > scene.vanishX) {
+      poly(ctx, [P(b.x0, b.y0, b.z0), P(b.x0, b.y1, b.z0), P(b.x0, b.y1, b.z1), P(b.x0, b.y0, b.z1)], colours.left);
+    }
+    if (b.x1 < scene.vanishX) {
+      poly(ctx, [P(b.x1, b.y0, b.z0), P(b.x1, b.y1, b.z0), P(b.x1, b.y1, b.z1), P(b.x1, b.y0, b.z1)], colours.right);
+    }
+    poly(ctx, [P(b.x0, b.y1, b.z0), P(b.x1, b.y1, b.z0), P(b.x1, b.y1, b.z1), P(b.x0, b.y1, b.z1)], colours.front);
+    poly(ctx, [P(b.x0, b.y0, b.z1), P(b.x1, b.y0, b.z1), P(b.x1, b.y1, b.z1), P(b.x0, b.y1, b.z1)], colours.top);
+  }, lift);
 }
 
 /** A quad lying on one face of a box, inset by fractions — labels, insets, trim. */
@@ -336,33 +425,31 @@ export function drawCylinder(
   r: number,
   z0: number,
   z1: number,
-  base: string
+  base: string,
+  lift = 1
 ): void {
   const bottom = floorEllipse(scene, x, y, r, z0);
   const top = floorEllipse(scene, x, y, r, z1);
 
-  const skirt = ctx.createLinearGradient(bottom.cx - bottom.rx, 0, bottom.cx + bottom.rx, 0);
-  skirt.addColorStop(0, shade(base, 0.1));
-  skirt.addColorStop(0.45, base);
-  skirt.addColorStop(1, shade(base, -0.34));
+  neu(ctx, () => {
+    // The skirt is the band between the two ellipses' front halves: across the
+    // bottom rim right to left, up the left side, back across the top rim.
+    ctx.beginPath();
+    ctx.ellipse(bottom.cx, bottom.cy, bottom.rx, bottom.ry, 0, 0, Math.PI);
+    ctx.lineTo(top.cx - top.rx, top.cy);
+    ctx.ellipse(top.cx, top.cy, top.rx, top.ry, 0, Math.PI, 0, true);
+    ctx.closePath();
+    ctx.fillStyle = base;
+    ctx.fill();
 
-  // The skirt is the band between the two ellipses' front halves: across the
-  // bottom rim right to left, up the left side, back across the top rim.
-  ctx.beginPath();
-  ctx.ellipse(bottom.cx, bottom.cy, bottom.rx, bottom.ry, 0, 0, Math.PI);
-  ctx.lineTo(top.cx - top.rx, top.cy);
-  ctx.ellipse(top.cx, top.cy, top.rx, top.ry, 0, Math.PI, 0, true);
-  ctx.closePath();
-  ctx.fillStyle = skirt;
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.ellipse(top.cx, top.cy, top.rx, top.ry, 0, 0, Math.PI * 2);
-  ctx.fillStyle = shade(base, 0.22);
-  ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(top.cx, top.cy, top.rx, top.ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = shade(base, 0.22);
+    ctx.fill();
+  }, lift);
 }
 
-/** A lit sphere — a ball, a bead, a pip. */
+/** A sphere — a ball, a bead, a pip. */
 export function drawSphere(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
@@ -370,25 +457,17 @@ export function drawSphere(
   y: number,
   z: number,
   r: number,
-  base: string
+  base: string,
+  lift = 1
 ): void {
   const centre = scene.project(x, y, z);
   const rr = Math.max(1, r * scene.scale(y));
-  const gradient = ctx.createRadialGradient(
-    centre.x - rr * 0.35,
-    centre.y - rr * 0.4,
-    rr * 0.1,
-    centre.x,
-    centre.y,
-    rr
-  );
-  gradient.addColorStop(0, shade(base, 0.55));
-  gradient.addColorStop(0.5, base);
-  gradient.addColorStop(1, shade(base, -0.4));
-  ctx.beginPath();
-  ctx.arc(centre.x, centre.y, rr, 0, Math.PI * 2);
-  ctx.fillStyle = gradient;
-  ctx.fill();
+  neu(ctx, () => {
+    ctx.beginPath();
+    ctx.arc(centre.x, centre.y, rr, 0, Math.PI * 2);
+    ctx.fillStyle = base;
+    ctx.fill();
+  }, lift);
 }
 
 // ─────────────────────────────────────────────

@@ -1,62 +1,39 @@
+/**
+ * VIP: tiers, rakeback status and rakeback claims. The daily wheel and the
+ * other free-money rewards were removed along with the Free Money page.
+ */
+
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { awardBonus } from './ledger.service';
 
 const D = Prisma.Decimal;
 
-export const WHEEL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-
-export const WHEEL_SEGMENTS = [
-  { prize: '1', weight: 45 },
-  { prize: '5', weight: 30 },
-  { prize: '10', weight: 18 },
-  { prize: '50', weight: 6 },
-  { prize: '100', weight: 1 },
-] as const;
-
-const TOTAL_WEIGHT = WHEEL_SEGMENTS.reduce((sum, s) => sum + s.weight, 0);
-
+/**
+ * VIP ladder: lifetime wagered to reach each tier, and the share of net losses
+ * paid back as rakeback. Tops out at $50,000, and every step is a bigger climb
+ * than the last ($2.5k, then +5k, +10k, +15k, +17.5k), so each level is harder
+ * to reach than the one before. At most 5% back.
+ */
 export const VIP_TIERS = [
   { name: 'Unranked', threshold: '0', rakeback: 0 },
-  { name: 'Bronze', threshold: '1000', rakeback: 0.05 },
-  { name: 'Silver', threshold: '5000', rakeback: 0.06 },
-  { name: 'Gold', threshold: '25000', rakeback: 0.08 },
-  { name: 'Platinum', threshold: '100000', rakeback: 0.1 },
-  { name: 'Diamond', threshold: '500000', rakeback: 0.1 },
+  { name: 'Bronze', threshold: '2500', rakeback: 0.01 },
+  { name: 'Silver', threshold: '7500', rakeback: 0.02 },
+  { name: 'Gold', threshold: '17500', rakeback: 0.03 },
+  { name: 'Platinum', threshold: '32500', rakeback: 0.04 },
+  { name: 'Diamond', threshold: '50000', rakeback: 0.05 },
 ] as const;
 
-export type TierName = (typeof VIP_TIERS)[number]['name'];
+/** Rakeback is only paid out once at least this much has built up. */
+export const RAKEBACK_MIN_CLAIM = '1';
 
-export class WheelNotReadyError extends Error {
-  constructor(readonly nextAvailableAt: Date) {
-    super('Daily wheel is not ready yet');
-    this.name = 'WheelNotReadyError';
-  }
-}
+export type TierName = (typeof VIP_TIERS)[number]['name'];
 
 export class NothingToClaimError extends Error {
   constructor() {
     super('No rakeback available to claim');
     this.name = 'NothingToClaimError';
   }
-}
-
-export function drawSegment(random: number = Math.random()): {
-  prize: string;
-  index: number;
-} {
-  // Guard against a caller passing exactly 1 (or a float rounding to it),
-  // which would otherwise fall through the loop and return nothing.
-  const target = Math.min(Math.max(random, 0), 0.999999999) * TOTAL_WEIGHT;
-
-  let cumulative = 0;
-  for (let i = 0; i < WHEEL_SEGMENTS.length; i += 1) {
-    cumulative += WHEEL_SEGMENTS[i].weight;
-    if (target < cumulative) {
-      return { prize: WHEEL_SEGMENTS[i].prize, index: i };
-    }
-  }
-  return { prize: WHEEL_SEGMENTS[0].prize, index: 0 };
 }
 
 export function tierFor(wagered: Prisma.Decimal): (typeof VIP_TIERS)[number] {
@@ -77,72 +54,6 @@ export function nextTierFor(
   return null;
 }
 
-export function nextSpinAt(lastSpinAt: Date | null): Date | null {
-  if (!lastSpinAt) return null;
-  const next = new Date(lastSpinAt.getTime() + WHEEL_COOLDOWN_MS);
-  return next > new Date() ? next : null;
-}
-
-export interface SpinResult {
-  prize: string;
-  segmentIndex: number;
-  balance: string;
-  nextAvailableAt: string;
-}
-
-export async function spinDailyWheel(input: {
-  userId: string;
-  currency?: string;
-  random?: number;
-}): Promise<SpinResult> {
-  const currency = input.currency ?? 'USD';
-  const now = new Date();
-  const cutoff = new Date(now.getTime() - WHEEL_COOLDOWN_MS);
-
-  const user = await prisma.user.findUnique({
-    where: { id: input.userId },
-    select: { lastDailyWheelSpinAt: true, frozen: true },
-  });
-  if (!user) throw new Error('bonus: user not found');
-  if (user.frozen) throw new Error('bonus: account is frozen');
-
-  const pending = nextSpinAt(user.lastDailyWheelSpinAt);
-  if (pending) throw new WheelNotReadyError(pending);
-
-  // Atomic claim: matches only if the stored timestamp is still older than the
-  // cooldown (or null). Two concurrent spins → exactly one match.
-  const claimed = await prisma.user.updateMany({
-    where: {
-      id: input.userId,
-      OR: [
-        { lastDailyWheelSpinAt: null },
-        { lastDailyWheelSpinAt: { lte: cutoff } },
-      ],
-    },
-    data: { lastDailyWheelSpinAt: now },
-  });
-  if (claimed.count !== 1) {
-    const fresh = await prisma.user.findUnique({
-      where: { id: input.userId },
-      select: { lastDailyWheelSpinAt: true },
-    });
-    throw new WheelNotReadyError(
-      nextSpinAt(fresh?.lastDailyWheelSpinAt ?? now) ??
-        new Date(now.getTime() + WHEEL_COOLDOWN_MS)
-    );
-  }
-
-  const { prize, index } = drawSegment(input.random);
-  const bonus = await awardBonus({ userId: input.userId, amount: prize, currency });
-
-  return {
-    prize,
-    segmentIndex: index,
-    balance: bonus.balance,
-    nextAvailableAt: new Date(now.getTime() + WHEEL_COOLDOWN_MS).toISOString(),
-  };
-}
-
 export interface VipStatus {
   tier: TierName;
   rakebackRate: number;
@@ -152,8 +63,6 @@ export interface VipStatus {
   claimable: string;
   balance: string;
   currency: string;
-  dailyWheelAvailable: boolean;
-  dailyWheelNextAvailableAt: string | null;
 }
 
 export async function getVipStatus(input: {
@@ -162,7 +71,7 @@ export async function getVipStatus(input: {
 }): Promise<VipStatus> {
   const currency = input.currency ?? 'USD';
 
-  const [sessions, wallet, user, claimed] = await Promise.all([
+  const [sessions, wallet, claimed] = await Promise.all([
     prisma.gameSession.aggregate({
       _sum: { betAmount: true, payout: true },
       where: { userId: input.userId },
@@ -170,10 +79,6 @@ export async function getVipStatus(input: {
     prisma.wallet.findUnique({
       where: { userId_currency: { userId: input.userId, currency } },
       select: { balance: true },
-    }),
-    prisma.user.findUnique({
-      where: { id: input.userId },
-      select: { lastDailyWheelSpinAt: true },
     }),
     prisma.rakebackClaim.aggregate({
       _sum: { amount: true },
@@ -210,8 +115,6 @@ export async function getVipStatus(input: {
         );
   }
 
-  const pending = nextSpinAt(user?.lastDailyWheelSpinAt ?? null);
-
   return {
     tier: tier.name,
     rakebackRate: tier.rakeback,
@@ -227,8 +130,6 @@ export async function getVipStatus(input: {
     claimable: claimable.toFixed(8),
     balance: wallet?.balance.toString() ?? '0',
     currency,
-    dailyWheelAvailable: pending === null,
-    dailyWheelNextAvailableAt: pending?.toISOString() ?? null,
   };
 }
 
@@ -240,7 +141,7 @@ export async function claimRakeback(input: {
 
   /**
    * The entitlement is derived (lifetime rakeback earned minus what has already
-   * been claimed), so unlike the daily bonuses there is no period or flag to
+   * been claimed), so there is no period or flag to
    * hang a conditional write on, and RakebackClaim carries no unique key that
    * would reject a duplicate.
    *
@@ -260,7 +161,7 @@ export async function claimRakeback(input: {
 
     const status = await getVipStatus({ userId: input.userId, currency });
     const amount = new D(status.claimable);
-    if (amount.lessThanOrEqualTo(0)) throw new NothingToClaimError();
+    if (amount.lessThan(RAKEBACK_MIN_CLAIM)) throw new NothingToClaimError();
 
     const row = await tx.rakebackClaim.create({
       data: { userId: input.userId, amount, currency },

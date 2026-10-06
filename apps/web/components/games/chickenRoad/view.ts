@@ -26,14 +26,18 @@
 import { LAYOUT } from './config';
 
 /**
- * World pixels in one lane length, per pixel of stage height. At 2.2 a square
- * on the road at the chicken's row is drawn a little under half as deep as it
- * is wide — roughly a 27° look down the lanes.
+ * World pixels in one lane length, per pixel of stage height. 1.35 is a high,
+ * near-overhead camera: a square on the road is drawn most of the way as deep
+ * as it is wide, so the board reads from above rather than down a long road.
  */
-export const DEPTH_STRETCH = 2.2;
+export const DEPTH_STRETCH = 1.35;
 
-/** Camera distance to the far (t = 0) and near (t = 1) ends of the road. */
-const FAR = 2;
+/**
+ * Camera distance to the far (t = 0) and near (t = 1) ends of the road. A
+ * ratio of 1.3 keeps a touch of depth while the lanes stay nearly parallel —
+ * the steep angle; the old 2 : 1 made them converge hard on a vanishing point.
+ */
+const FAR = 1.3;
 const NEAR = 1;
 /** Screen rows, as fractions of stage height, where the road starts and ends. */
 const TOP = 0.04;

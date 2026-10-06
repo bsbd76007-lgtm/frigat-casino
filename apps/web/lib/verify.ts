@@ -25,9 +25,16 @@
 
 import {
   AVIA,
+  AVIA_SPOT_CURSOR,
+  aviaEventTable,
+  aviaLandingChance as sharedAviaLandingChance,
+  aviaPick,
+  aviaSafeLandingMaxStake as sharedAviaSafeLandingMaxStake,
   CHICKEN,
   chickenHazardAt,
   type AviaEventKind,
+  type AviaMode,
+  type AviaSpotId,
   type ChickenMode,
 } from '@frigat/shared/constants';
 
@@ -142,8 +149,8 @@ export async function verifyCommitment(
 const EDGE = {
   CRASH: 0.025,
   LIMBO: 0.025,
-  CHICKEN: 0.025,
-  AVIA: 0.025,
+  CHICKEN: 0.06,
+  AVIA: 0.06,
 } as const;
 
 const CRASH_MAX_MULTIPLIER = 1_000_000;
@@ -227,54 +234,55 @@ export async function verifyChicken(
   return null;
 }
 
-/** Avia Masters landing chance — mirrors `landingChance` in avia.engine.ts. */
-export function aviaLandingChance(): number {
-  const total = AVIA.events.reduce((sum, e) => sum + e.weight, 0);
-  const meanMul = AVIA.events.reduce((s, e) => s + e.weight * e.mul, 0) / total;
-  const meanAdd = AVIA.events.reduce((s, e) => s + e.weight * e.add, 0) / total;
-  const { min, max } = AVIA.flightEvents;
-  let expected = 0;
-  for (let n = min; n <= max; n += 1) {
-    let m = 1;
-    for (let i = 0; i < n; i += 1) m = meanMul * m + meanAdd;
-    expected += m;
-  }
-  return (1 - EDGE.AVIA) / (expected / (max - min + 1));
+/** Avia Masters landing chance — the shared formula at the web's EDGE literal. */
+export function aviaLandingChance(mode: AviaMode): number {
+  return sharedAviaLandingChance(mode, EDGE.AVIA);
+}
+
+/** Largest stake a safe landing covers in `mode` — mirrors the server's cap. */
+export function aviaSafeLandingMaxStake(mode: AviaMode): number {
+  return sharedAviaSafeLandingMaxStake(mode, EDGE.AVIA);
 }
 
 /**
- * Replays an Avia Masters flight: cursor 0 decides the landing, cursor 1 the
- * flight length, and each event takes two draws — its kind, then its altitude.
+ * Replays an Avia Masters flight: cursor 0 decides the landing (skipped when
+ * the landing was bought), cursor 1 the flight length, each event takes two
+ * draws — its kind, then its altitude — and AVIA_SPOT_CURSOR picks the spot.
  */
 export async function verifyAvia(
   serverSeed: string,
   clientSeed: string,
-  nonce: number
-): Promise<{ landed: boolean; kinds: AviaEventKind[]; multiplier: number }> {
+  nonce: number,
+  mode: AviaMode = 'fast',
+  safe = false
+): Promise<{
+  landed: boolean;
+  kinds: AviaEventKind[];
+  multiplier: number;
+  spot: AviaSpotId | null;
+  payoutMultiplier: number;
+}> {
   const draw = (cursor: number) => floatAt(serverSeed, clientSeed, nonce, cursor);
-  const total = AVIA.events.reduce((sum, e) => sum + e.weight, 0);
+  const table = aviaEventTable(mode);
 
-  const landed = (await draw(0)) < aviaLandingChance();
-  const { min, max } = AVIA.flightEvents;
+  const landed = safe || (await draw(0)) < aviaLandingChance(mode);
+  const { min, max } = AVIA.modes[mode].flightEvents;
   const length = min + Math.floor((await draw(1)) * (max - min + 1));
 
   let m = 1;
   const kinds: AviaEventKind[] = [];
   for (let i = 0; i < length; i += 1) {
-    let roll = (await draw(2 + 2 * i)) * total;
-    let spec: (typeof AVIA.events)[number] = AVIA.events[AVIA.events.length - 1];
-    for (const e of AVIA.events) {
-      roll -= e.weight;
-      if (roll < 0) {
-        spec = e;
-        break;
-      }
-    }
+    const spec = aviaPick(table, await draw(2 + 2 * i));
     m = m * spec.mul + spec.add;
     kinds.push(spec.kind);
   }
-  const multiplier = Math.floor(Math.min(m, AVIA.maxMultiplier) * 100) / 100;
-  return { landed, kinds, multiplier };
+  const floor2 = (v: number) => Math.floor(v * 100) / 100;
+  const multiplier = floor2(Math.min(m, AVIA.maxMultiplier));
+  const spot = landed ? aviaPick(AVIA.spots, await draw(AVIA_SPOT_CURSOR)) : null;
+  const payoutMultiplier = spot
+    ? floor2(Math.min(multiplier * spot.mul, AVIA.maxMultiplier))
+    : 0;
+  return { landed, kinds, multiplier, spot: spot?.id ?? null, payoutMultiplier };
 }
 
 export async function verifyDice(

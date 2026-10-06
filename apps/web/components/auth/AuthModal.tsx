@@ -30,7 +30,9 @@ import {
   requestPasswordReset,
   resetPassword,
   submitPassword,
+  TotpRequiredError,
   verifyLoginCode,
+  verifyTotp,
   type CodeChallenge,
 } from '@/app/(auth)/authClient';
 import {
@@ -44,7 +46,7 @@ import { PasswordChecklist } from '@/app/(auth)/PasswordChecklist';
 import { useInjectedStyles } from '@/lib/useInjectedStyles';
 import { useLanguage } from '@/components/providers/LanguageProvider';
 
-type View = 'signin' | 'code' | 'forgot' | 'reset';
+type View = 'signin' | 'code' | 'totp' | 'forgot' | 'reset';
 
 const STYLE_ID = 'fg-auth-modal-styles';
 
@@ -114,6 +116,9 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  /** The ticket for the authenticator step, when the account has one. */
+  const [totpChallenge, setTotpChallenge] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState('');
 
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -132,9 +137,19 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
     setConfirmPassword('');
     setChallenge(null);
     setDigits(emptyDigits());
+    setTotpChallenge(null);
+    setTotpCode('');
     setError(null);
     setNotice(null);
   }, [open]);
+
+  /** Both earlier steps can end here: the credentials were right, 2FA is on. */
+  const toTotp = useCallback((err: TotpRequiredError) => {
+    setTotpChallenge(err.challenge);
+    setTotpCode('');
+    setError(null);
+    setView('totp');
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -170,12 +185,13 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
         setView('code');
         focusFirstOtpBox();
       } catch (err) {
-        setError(err instanceof AuthError ? err.message : 'Could not sign in.');
+        if (err instanceof TotpRequiredError) toTotp(err);
+        else setError(err instanceof AuthError ? err.message : 'Could not sign in.');
       } finally {
         setBusy(false);
       }
     },
-    [busy, email, password, done]
+    [busy, email, password, done, toTotp]
   );
 
   const submitCode = useCallback(
@@ -187,13 +203,36 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
         await verifyLoginCode(challenge.email, value);
         done();
       } catch (err) {
+        if (err instanceof TotpRequiredError) {
+          toTotp(err);
+          setBusy(false);
+          return;
+        }
         setError(err instanceof AuthError ? err.message : 'Could not verify that code.');
         setDigits(emptyDigits());
         focusFirstOtpBox();
         setBusy(false);
       }
     },
-    [busy, challenge, done]
+    [busy, challenge, done, toTotp]
+  );
+
+  const submitTotp = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault();
+      if (busy || !totpChallenge || !totpCode.trim()) return;
+      setBusy(true);
+      setError(null);
+      try {
+        await verifyTotp(totpChallenge, totpCode.trim());
+        done();
+      } catch (err) {
+        setError(err instanceof AuthError ? err.message : t('security.totpInvalid'));
+        setTotpCode('');
+        setBusy(false);
+      }
+    },
+    [busy, totpChallenge, totpCode, done, t]
   );
 
   const sendReset = useCallback(
@@ -263,6 +302,7 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
   const titles: Record<View, { title: string; sub: string }> = {
     signin: { title: 'Sign in', sub: 'Welcome back. Enter your details to reach the tables.' },
     code: { title: 'Check your email', sub: `We sent a ${OTP_DIGITS}-digit code to finish signing in.` },
+    totp: { title: t('security.signInTitle'), sub: t('security.signInSub') },
     forgot: { title: 'Reset password', sub: 'We will email you a code to set a new password.' },
     reset: { title: 'Choose a new password', sub: 'Enter the code with your new password.' },
   };
@@ -382,6 +422,43 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
               </button>
             </div>
           </>
+        )}
+
+        {view === 'totp' && (
+          <form onSubmit={submitTotp} noValidate>
+            <div className="authm__field">
+              <label htmlFor="authm-totp">{t('security.codeLabel')}</label>
+              <input
+                id="authm-totp"
+                className="authm__input"
+                inputMode="text"
+                autoComplete="one-time-code"
+                autoFocus
+                maxLength={12}
+                value={totpCode}
+                disabled={busy}
+                onChange={(e) => setTotpCode(e.target.value)}
+                placeholder="123456"
+              />
+            </div>
+            <button type="submit" className="authm__submit" disabled={busy || !totpCode.trim()}>
+              {busy ? t('security.verifying') : t('security.verifySignIn')}
+            </button>
+            <p className="authm__sub">{t('security.backupHint')}</p>
+            <div className="authm__row">
+              <button
+                type="button"
+                className="authm__link"
+                onClick={() => {
+                  setView('signin');
+                  setTotpChallenge(null);
+                  setPassword('');
+                }}
+              >
+                Back to sign in
+              </button>
+            </div>
+          </form>
         )}
 
         {view === 'forgot' && (

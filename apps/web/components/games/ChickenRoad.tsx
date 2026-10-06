@@ -20,6 +20,7 @@ import {
   LAYOUT,
   SEED_GEOMETRY,
   TRAFFIC_MODES,
+  crossingChanceAt,
   cumulativeChanceAt,
   formatChance,
   formatMultiplier,
@@ -44,12 +45,13 @@ import {
   drawBarrierShadow,
   drawCar3D,
   drawCarShadow,
-  drawChicken,
   drawChickenShadow,
-  drawChickenSprite,
+  drawChickenSmooth,
   drawCover,
   drawCoverLabels,
+  drawOverpass,
   drawRoad,
+  overpassClipY,
   randomCarColour,
   type CarColour,
   type CoverState,
@@ -148,6 +150,9 @@ interface LaneTraffic {
 // ─────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────
+
+/** One-tap stakes under the bet field. */
+const QUICK_BETS = [1, 5, 10, 25, 100] as const;
 
 export default function ChickenRoad() {
   const { t } = useLanguage();
@@ -698,6 +703,7 @@ export default function ChickenRoad() {
 
       // ── Ground layer ──
       drawRoad(ctx, view, { firstLane: 1, lastLane: roadEnd });
+      drawOverpass(ctx, view, LAYOUT.tunnelY, 'mouth');
 
       const settled = laneRef.current;
       const playing = phaseRef.current === 'PLAYING';
@@ -761,15 +767,32 @@ export default function ChickenRoad() {
         drawBarrierShadow(ctx, view, l, gateT(l), closedOf(l));
       }
       const standing: Array<{ t: number; paint: () => void }> = [];
+      // Traffic is hidden under the overpass: shadows only show on the road
+      // past its opening, and a car only below the underside of the deck, so
+      // it is first seen coming out of the tunnel, close to the crossing.
+      const roadClipY = view.project(0, LAYOUT.tunnelY).y;
+      const carClipY = overpassClipY(view, LAYOUT.tunnelY);
+      const clipped = (fromY: number, paint: () => void) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(-width, fromY, width * 3, height * 2);
+        ctx.clip();
+        paint();
+        ctx.restore();
+      };
       for (let l = firstLane - 1; l <= lastVisible + 1; l += 1) {
         const traffic = lanesRef.current.get(l);
         if (!traffic) continue;
         const cu = laneCentre(l);
         for (const car of traffic.cars) {
-          drawCarShadow(ctx, view, cu, car.t, carScale);
-          standing.push({ t: car.t, paint: () => drawCar3D(ctx, view, cu, car.t, carScale, car.colour) });
+          clipped(roadClipY, () => drawCarShadow(ctx, view, cu, car.t, carScale));
+          standing.push({
+            t: car.t,
+            paint: () => clipped(carClipY, () => drawCar3D(ctx, view, cu, car.t, carScale, car.colour)),
+          });
         }
       }
+      standing.push({ t: LAYOUT.tunnelY, paint: () => drawOverpass(ctx, view, LAYOUT.tunnelY, 'deck') });
       drawChickenShadow(ctx, view, chickenU, LAYOUT.chickenY, chickenDrawH, lift);
 
       // ── Standing objects, far to near ──
@@ -778,11 +801,9 @@ export default function ChickenRoad() {
       }
       standing.push({
         t: LAYOUT.chickenY,
-        paint: () => {
-          const sprite = chickenSpriteRef.current;
-          if (sprite) drawChickenSprite(ctx, sprite, chickenX, chickenY, chickenDrawH);
-          else drawChicken(ctx, chickenX, chickenY, chickenDrawH, now / 1000);
-        },
+        // Smooth vector bird — the pixel sprite and pixel fallback are no
+        // longer used on the board.
+        paint: () => drawChickenSmooth(ctx, chickenX, chickenY, chickenDrawH, now / 1000),
       });
       standing.sort((a, b) => a.t - b.t);
       for (const item of standing) item.paint();
@@ -867,9 +888,11 @@ export default function ChickenRoad() {
   const unlockAt = unlockLane(mode);
   const cashLocked = lane < unlockAt;
   const canCash = isPlaying && !cashLocked && !hopping && !busy;
+  /** The lane the next hop goes into; 0 once the road has run out. */
+  const nextLane = lane < lastLane(mode) ? lane + 1 : 0;
 
   return (
-    <div className="chr">
+    <div className="chr neu">
       {/* ---------- Stage ---------- */}
       <div className="chr__stage" ref={stageRef}>
         <canvas ref={canvasRef} className="chr__canvas" />
@@ -905,20 +928,26 @@ export default function ChickenRoad() {
       <div className="chr__panel">
         <div>
           <div className="chr__label">
-            <span>{t('gameUi.chickenTraffic')}</span>
-            <b>{mode.label}</b>
+            <span>{t('gameUi.chickenDifficulty')}</span>
+            <b>{t('gameUi.chickenRiskOf', { name: t(`gameUi.chickenMode_${mode.id}`), percent: mode.label })}</b>
           </div>
-          <div className="chr__modes">
+          {/* Each difficulty shows what each lane multiplies the payout by once
+              the ramp has run in — 1 / (1 - hazard) — so the harder the
+              button, the bigger the number. */}
+          <div className="chr__modes" role="radiogroup" aria-label={t('gameUi.chickenDifficulty')}>
             {TRAFFIC_MODES.map((m) => (
               <button
                 key={m.id}
                 type="button"
+                role="radio"
                 className={`chr__mode${m.id === mode.id ? ' chr__mode--on' : ''}`}
                 disabled={isPlaying}
-                aria-pressed={m.id === mode.id}
+                aria-checked={m.id === mode.id}
                 onClick={() => setMode(m)}
+                title={t('gameUi.chickenRiskOf', { name: t(`gameUi.chickenMode_${m.id}`), percent: m.label })}
               >
-                {m.label}
+                <span className="chr__mode-name">{t(`gameUi.chickenMode_${m.id}`)}</span>
+                <span className="chr__mode-max">×{(1 / (1 - m.difficulty)).toFixed(2)}</span>
               </button>
             ))}
           </div>
@@ -927,22 +956,25 @@ export default function ChickenRoad() {
         <div>
           <label className="chr__label" htmlFor="chr-bet">
             <span>{t('gameUi.betAmount')}</span>
-            <b>{formatMultiplier(multiplier)}x</b>
+            <b>{money(payout)}</b>
           </label>
-          <div className="chr__inputs">
-            <input
-              id="chr-bet"
-              className="chr__input"
-              type="number"
-              inputMode="decimal"
-              min={GAME_CONFIG.minBet}
-              max={GAME_CONFIG.maxBet}
-              step={1}
-              value={Number.isFinite(bet) ? bet : ''}
-              disabled={isPlaying}
-              aria-invalid={betError !== null}
-              onChange={(e) => setBet(Number(e.target.value))}
-            />
+          <div className="chr__bet">
+            <div className="chr__field">
+              <span className="chr__cur" aria-hidden="true">$</span>
+              <input
+                id="chr-bet"
+                className="chr__input"
+                type="number"
+                inputMode="decimal"
+                min={GAME_CONFIG.minBet}
+                max={GAME_CONFIG.maxBet}
+                step={1}
+                value={Number.isFinite(bet) ? bet : ''}
+                disabled={isPlaying}
+                aria-invalid={betError !== null}
+                onChange={(e) => setBet(Number(e.target.value))}
+              />
+            </div>
             <button
               type="button"
               className="chr__mod"
@@ -961,17 +993,48 @@ export default function ChickenRoad() {
               aria-label={t('gameUi.doubleBet')}
               onClick={() => setBet((b) => Math.min(maxBet, Number((b * 2).toFixed(2))))}
             >
-              2x
+              2×
             </button>
-            <button
-              type="button"
-              className="chr__mod"
-              disabled={isPlaying}
-              aria-label={t('gameUi.maxBet')}
-              onClick={() => setBet(maxBet)}
-            >
-              Max
-            </button>
+          </div>
+          <div className="chr__quick">
+            {QUICK_BETS.map((amount) => (
+              <button
+                key={amount}
+                type="button"
+                disabled={isPlaying}
+                aria-pressed={bet === amount}
+                onClick={() => setBet(amount)}
+              >
+                {amount}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* What the next hop pays and how likely it is to survive, and what
+            cash-out is worth — the two numbers a player weighs every lane. */}
+        <div className="chr__stats">
+          <div className="chr__stat">
+            <i>{t('gameUi.chickenNextLane')}</i>
+            <b>{nextLane > 0 ? `×${formatMultiplier(multiplierAt(nextLane, mode))}` : '—'}</b>
+            <small>
+              {nextLane > 0
+                ? t('gameUi.chickenSafe', { percent: formatChance(crossingChanceAt(nextLane, mode)) })
+                : t('gameUi.chickenRoadEnd')}
+            </small>
+          </div>
+          <div className="chr__stat chr__stat--gold">
+            <i>{isPlaying && !cashLocked ? t('gameUi.chickenCashNow') : t('gameUi.chickenCashFrom')}</i>
+            <b>
+              {isPlaying && !cashLocked
+                ? money(payout)
+                : `×${formatMultiplier(multiplierAt(unlockAt, mode))}`}
+            </b>
+            <small>
+              {isPlaying && !cashLocked
+                ? `×${formatMultiplier(multiplier)}`
+                : t('gameUi.chickenLaneN', { lane: unlockAt })}
+            </small>
           </div>
         </div>
 
@@ -983,7 +1046,7 @@ export default function ChickenRoad() {
 
         {phase === 'LOST' && (
           <div className="chr__banner chr__banner--lost" role="status">
-            Hit by a car — the round ends here
+            {t('gameUi.chickenHit')}
           </div>
         )}
         {phase === 'WON' && (
@@ -995,33 +1058,49 @@ export default function ChickenRoad() {
         )}
 
         {isPlaying ? (
-          <button
-            type="button"
-            className="chr__action chr__action--cash"
-            onClick={cashOut}
-            disabled={!canCash}
-          >
-            {cashLocked
-              ? t('gameUi.chickenCashLocked', {
-                  multiplier: `${formatMultiplier(multiplierAt(unlockAt, mode))}x`,
-                })
-              : `Cash Out (${money(payout)})`}
-          </button>
+          <div className="chr__actions">
+            <button
+              type="button"
+              className="chr__action chr__action--go"
+              onClick={advance}
+              disabled={!canStep}
+            >
+              {t('gameUi.chickenGo')}
+              <small>
+                {nextLane > 0 ? `×${formatMultiplier(multiplierAt(nextLane, mode))}` : ''}
+              </small>
+            </button>
+            <button
+              type="button"
+              className="chr__action chr__action--cash"
+              onClick={cashOut}
+              disabled={!canCash}
+            >
+              {cashLocked ? t('gameUi.chickenCashOutShort') : money(payout)}
+              <small>
+                {cashLocked
+                  ? t('gameUi.chickenCashLocked', {
+                      multiplier: `${formatMultiplier(multiplierAt(unlockAt, mode))}x`,
+                    })
+                  : t('gameUi.chickenCashOutShort')}
+              </small>
+            </button>
+          </div>
         ) : (
-          <button
-            type="button"
-            className="chr__action"
-            onClick={startRound}
-            disabled={betError !== null || busy}
-          >
-            {isOver ? t('gameUi.chickenPlayAgain') : t('gameUi.chickenStartRound')}
-          </button>
+          <div className="chr__actions">
+            <button
+              type="button"
+              className="chr__action"
+              onClick={startRound}
+              disabled={betError !== null || busy}
+            >
+              {isOver ? t('gameUi.chickenPlayAgain') : t('gameUi.chickenStartRound')}
+            </button>
+          </div>
         )}
 
         <p className="chr__hint">
-          {isPlaying
-            ? t('gameUi.chickenHintPlaying')
-            : t('gameUi.chickenHintIdle')}
+          {isPlaying ? t('gameUi.chickenHintPlaying') : t('gameUi.chickenHintIdle')}
         </p>
       </div>
     </div>

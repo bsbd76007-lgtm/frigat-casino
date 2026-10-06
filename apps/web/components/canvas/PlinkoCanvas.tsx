@@ -8,7 +8,9 @@ import {
   type CanvasFrame,
 } from '@/lib/useCanvasRenderer';
 
-import { BOARD, FONT, GOLD, alpha, multiplierColour, shade } from './three';
+import { BOARD, FONT, GOLD, TABLES, alpha, multiplierColour, neu, shade } from './three';
+
+const THEME = TABLES.plinko;
 
 export interface PlinkoDrop {
   id: string;
@@ -30,7 +32,8 @@ export interface PlinkoCanvasProps {
 const LANDED_FLASH_MS = 700;
 const PEG_R = 3;
 const BALL_R = 6;
-const SLOT_H = 26;
+/** Tall enough for the payout to be read at a glance, not squinted at. */
+const SLOT_H = 36;
 
 export function bucketOf(drop: PlinkoDrop): number {
   if (typeof drop.bucket === 'number') return drop.bucket;
@@ -85,14 +88,18 @@ export function PlinkoCanvas({
   const draw = useMemo(
     () =>
       ({ ctx, width, height: h }: CanvasFrame) => {
-        ctx.clearRect(0, 0, width, h);
+        // The board paints its own surface so the pegs can stand out of it.
+        ctx.fillStyle = THEME.surface;
+        ctx.fillRect(0, 0, width, h);
 
         const bucketCount = rows + 1;
         const padX = 14;
         const topY = 24;
         const fieldH = Math.max(1, h - topY - SLOT_H - 20);
         const rowGap = fieldH / Math.max(1, rows);
-        const spacing = Math.min(rowGap * 1.05, (width - padX * 2) / Math.max(1, bucketCount));
+        // Allowed to spread wider than it is tall: the payout slots take their
+        // width from this, and wider slots are what let the numbers be read.
+        const spacing = Math.min(rowGap * 1.5, (width - padX * 2) / Math.max(1, bucketCount));
         const cx = width / 2;
         const slotY = topY + rows * rowGap + 12;
 
@@ -101,15 +108,20 @@ export function PlinkoCanvas({
 
         const now = performance.now();
 
-        // Pegs.
-        ctx.fillStyle = BOARD.neutralLit;
+        // Pegs, as one path so the whole field is lifted in a single pass.
+        const pegs = new Path2D();
         for (let level = 0; level < rows; level += 1) {
           for (let j = 0; j <= level; j += 1) {
-            ctx.beginPath();
-            ctx.arc(nodeX(j, level), nodeY(level), PEG_R, 0, Math.PI * 2);
-            ctx.fill();
+            const px = nodeX(j, level);
+            const py = nodeY(level);
+            pegs.moveTo(px + PEG_R, py);
+            pegs.arc(px, py, PEG_R, 0, Math.PI * 2);
           }
         }
+        neu(ctx, () => {
+          ctx.fillStyle = shade(THEME.idle, 0.22);
+          ctx.fill(pegs);
+        }, 0.45);
 
         // Payout slots.
         const slotW = spacing * 0.92;
@@ -133,7 +145,7 @@ export function PlinkoCanvas({
           // The mid slots are the dullest colour on the board, so their label
           // takes the text ramp rather than the slot's own near-grey.
           ctx.fillStyle = flash > 0.35 ? '#141419' : multiplier < 2 ? BOARD.muted : colour;
-          ctx.font = `700 ${Math.min(11, slotW * 0.3)}px ${FONT.num}`;
+          ctx.font = `800 ${Math.max(11, Math.min(17, slotW * 0.42))}px ${FONT.num}`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(
@@ -190,13 +202,12 @@ export function PlinkoCanvas({
             ctx.fill();
           }
 
-          const shine = ctx.createRadialGradient(x - BALL_R * 0.35, y - BALL_R * 0.4, 1, x, y, BALL_R);
-          shine.addColorStop(0, shade(GOLD, 0.5));
-          shine.addColorStop(1, shade(GOLD, -0.22));
-          ctx.beginPath();
-          ctx.arc(x, y, BALL_R, 0, Math.PI * 2);
-          ctx.fillStyle = shine;
-          ctx.fill();
+          neu(ctx, () => {
+            ctx.beginPath();
+            ctx.arc(x, y, BALL_R, 0, Math.PI * 2);
+            ctx.fillStyle = GOLD;
+            ctx.fill();
+          }, 0.5);
         }
 
         for (const [bucket, at] of [...landedRef.current.entries()]) {

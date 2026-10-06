@@ -32,7 +32,6 @@ const BINS = [
 
 export function PlinkoIcon({ size = 40, title, ...rest }: GameIconProps) {
   const uid = useId().replace(/:/g, '');
-  const peg = `plinko-peg-${uid}`;
   const glow = `plinko-glow-${uid}`;
 
   return (
@@ -47,11 +46,6 @@ export function PlinkoIcon({ size = 40, title, ...rest }: GameIconProps) {
     >
       {title && <title>{title}</title>}
       <defs>
-        <radialGradient id={peg} cx="35%" cy="30%" r="70%">
-          <stop offset="0%" stopColor="#e6edf3" />
-          <stop offset="60%" stopColor="#8b97a6" />
-          <stop offset="100%" stopColor="#3a475a" />
-        </radialGradient>
         <filter id={glow} x="-60%" y="-60%" width="220%" height="220%">
           <feGaussianBlur stdDeviation="1.5" result="blur" />
           <feMerge>
@@ -79,7 +73,7 @@ export function PlinkoIcon({ size = 40, title, ...rest }: GameIconProps) {
           cx={p.cx}
           cy={p.cy}
           r="2"
-          fill={`url(#${peg})`}
+          fill="#8b97a6"
           opacity={p.opacity}
         />
       ))}

@@ -82,10 +82,10 @@ export const CSS = `
 
 .avia__action { width: 100%; padding: 10px; font-family: inherit; font-size: 16px;
   font-weight: 900; color: var(--fg-on-accent);
-  background: linear-gradient(90deg, var(--fg-accent-mid), var(--fg-accent-deep)); border: none;
+  background: var(--fg-accent-deep); border: none;
   border-radius: var(--fg-r-lg); cursor: pointer; box-shadow: 0 10px 20px -6px rgba(31,87,214,.45);
   transition: background var(--fg-t), transform var(--fg-t); }
-.avia__action:hover:not(:disabled) { background: linear-gradient(90deg, var(--fg-accent), var(--fg-accent-mid)); }
+.avia__action:hover:not(:disabled) { background: var(--fg-accent-mid); }
 .avia__action:active:not(:disabled) { transform: translateY(1px); }
 .avia__action:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .avia__action:focus-visible { outline: none; box-shadow: var(--fg-ring); }
@@ -112,8 +112,46 @@ export const CSS = `
   background: color-mix(in srgb, var(--fg-red) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--fg-red) 38%, transparent);
   border-radius: var(--fg-r); }
-.avia__note { margin: 0; font-size: 10.5px; line-height: 1.5; color: var(--fg-line-2);
+.avia__note { margin: 0; font-size: 10.5px; line-height: 1.5; color: var(--fg-dim);
   text-align: center; }
+
+/* ── Speed ── */
+.avia__speeds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.avia__speed { display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 4px; font-family: inherit; font-size: 13px; font-weight: 800;
+  color: var(--fg-muted); background: var(--fg-sunken); border: 1px solid var(--fg-line);
+  border-radius: var(--fg-r-lg); cursor: pointer;
+  transition: background var(--fg-t), color var(--fg-t); }
+.avia__speed small { font-size: 10.5px; font-weight: 700; color: var(--fg-dim);
+  font-variant-numeric: tabular-nums; }
+.avia__speed:hover:not(:disabled) { color: #fff; background: var(--fg-line); }
+.avia__speed:disabled { opacity: .45; cursor: not-allowed; }
+.avia__speed:focus-visible { outline: none; box-shadow: var(--fg-ring); }
+.avia__speed--on { color: var(--fg-on-accent); background: var(--fg-accent-deep);
+  border-color: var(--fg-accent-deep); }
+.avia__speed--on small { color: inherit; opacity: .85; }
+
+/* ── Safe landing ── */
+.avia__safe { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px;
+  border-radius: var(--fg-r-lg); border: 1px solid var(--fg-line); background: var(--fg-sunken);
+  cursor: pointer; transition: border-color var(--fg-t), background var(--fg-t); }
+.avia__safe input { margin: 2px 0 0; width: 16px; height: 16px; accent-color: var(--fg-gold);
+  flex: 0 0 auto; cursor: pointer; }
+.avia__safe-text { display: flex; flex-direction: column; gap: 2px; }
+.avia__safe-text b { font-size: 13px; font-weight: 800; color: var(--fg-text); }
+.avia__safe-text small { font-size: 11px; line-height: 1.45; color: var(--fg-muted); }
+.avia__safe--on { border-color: color-mix(in srgb, var(--fg-gold) 55%, transparent);
+  background: color-mix(in srgb, var(--fg-gold) 10%, transparent); }
+.avia__safe--on .avia__safe-text b { color: var(--fg-gold); }
+
+/* ── Landing spots ── */
+.avia__spots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.avia__spot { padding: 6px 4px; text-align: center; font-size: 11px; font-weight: 700;
+  color: var(--fg-muted); border-radius: var(--fg-r); border: 1px solid var(--fg-line); }
+.avia__spot b { color: var(--fg-gold); font-variant-numeric: tabular-nums; }
+
+.avia__action-sub { display: block; margin-top: 2px; font-size: 11px; font-weight: 700;
+  opacity: .85; }
 
 .avia__legend { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .avia__chip { padding: 6px 4px; text-align: center; font-size: 11px; font-weight: 800;

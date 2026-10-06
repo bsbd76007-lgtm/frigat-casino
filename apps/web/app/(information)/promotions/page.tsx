@@ -5,9 +5,7 @@
  *
  * Every offer listed here is one the server can actually pay out:
  *
- *   Daily wheel      POST /api/vip/daily-wheel   (claimed on /vip)
  *   Weekly rakeback  POST /api/vip/claim-rakeback
- *   Daily cashback   POST /api/streak/cashback
  *   Partner revenue  POST /api/referrals/claim
  *
  * A "deposit match" was on the brief and is **not** here, because no endpoint
@@ -17,9 +15,8 @@
  * belongs on this page the day the ledger can honour it.
  *
  * Each card links to the surface that owns its claim, so there is exactly one
- * implementation of each payout. The wheel is *not* mounted inline here: it
- * lives on /freemoney, which needs `useGameSocket`, whose provider lives in the
- * dashboard layout — rendering it on an information page throws at prerender.
+ * implementation of each payout. The daily wheel and the Free Money page are
+ * gone — there is no free-money offer to advertise here.
  */
 
 import Link from 'next/link';
@@ -42,28 +39,12 @@ export default function PromotionsPage() {
 
   const promos: Promo[] = [
     {
-      id: 'wheel',
-      name: t('promos.wheelName'),
-      tag: t('promos.wheelTag'),
-      blurb: t('promos.wheelBlurb'),
-      detail: t('promos.wheelDetail'),
-      action: { label: t('promos.wheelAction'), href: '/vip' },
-    },
-    {
       id: 'rakeback',
       name: t('promos.rakebackName'),
       tag: t('promos.rakebackTag'),
       blurb: t('promos.rakebackBlurb'),
       detail: t('promos.rakebackDetail'),
       action: { label: t('promos.rakebackAction'), href: '/vip' },
-    },
-    {
-      id: 'cashback',
-      name: t('promos.cashbackName'),
-      tag: t('promos.wheelTag'),
-      blurb: t('promos.cashbackBlurb'),
-      detail: t('promos.cashbackDetail'),
-      action: { label: t('promos.cashbackAction'), href: '/vip' },
     },
     {
       id: 'partner',

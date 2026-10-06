@@ -113,9 +113,8 @@ html[data-theme='dark'] {
 
        --fg-accent       #3b7cff  5.20:1 on page — accent TEXT, icons, strokes,
                                   focus rings. Never a fill under white text.
-       --fg-accent-mid   #2f6be6  4.81:1 with white — top of the CTA gradient.
-       --fg-accent-deep  #1f57d6  6.19:1 with white — flat fills, pressed and
-                                  bottom of the CTA gradient.
+       --fg-accent-mid   #2f6be6  4.81:1 with white — CTA hover fill.
+       --fg-accent-deep  #1f57d6  6.19:1 with white — flat fills and pressed.
 
      Pair every accent fill with --fg-on-accent, never with --fg-bg. */
   --fg-accent: #3b7cff;
@@ -140,27 +139,12 @@ html[data-theme='dark'] {
   --fg-pos: #4e9e7a;
   --fg-pos-soft: #86bda6;
 
-  /* Shared metallic treatments. Defined once as tokens so a panel, a button
-     and a card edge all catch the light from the same direction — mixing
-     ad-hoc gradients per component is what makes "metal" look like plastic. */
-  --fg-brass: linear-gradient(180deg, var(--fg-gold) 0%, var(--fg-gold-deep) 100%);
   /* Focus ring, matched to the new accent. */
   --fg-ring: 0 0 0 3px rgba(59, 124, 255, .35);
-  --fg-plate: linear-gradient(180deg, rgba(255, 255, 255, .05) 0%, rgba(0, 0, 0, .18) 100%);
   --fg-bevel: inset 0 1px 0 rgba(255, 255, 255, .07), inset 0 -1px 0 rgba(0, 0, 0, .35);
   --fg-glow-accent: 0 0 16px rgba(59, 124, 255, .22);
   --fg-glow-gold: 0 0 16px rgba(224, 176, 85, .2);
 
-  /* Brushed-metal texture. A repeating micro-gradient rather than an image:
-     no network request, no raster to go blurry on a HiDPI screen, and it
-     tiles at any size. Layered under --fg-plate on large surfaces only. */
-  --fg-grain: repeating-linear-gradient(
-    93deg,
-    rgba(255, 255, 255, .014) 0px,
-    rgba(255, 255, 255, .014) 1px,
-    rgba(0, 0, 0, .02) 1px,
-    rgba(0, 0, 0, .02) 3px
-  );
 
   /* ── Structure ──
      A container is defined by its EDGE, not by a shadow. One hairline token,
@@ -202,9 +186,8 @@ html[data-theme='dark'] {
      need both 6 and 10; a 4px grid would have flattened the difference between
      a chip and a panel.
 
-     Off-ramp numbers are allowed only when DERIVED, not chosen: the 34px
-     clearance on .rsm__title is the width of the close button beside it, the
-     42px on .fg-field > input clears the leading icon, and 1px is an optical
+     Off-ramp numbers are allowed only when DERIVED, not chosen: the 42px on
+     .fg-field > input clears the leading icon, and 1px is an optical
      nudge rather than a gap. A new value that is neither on the ramp nor
      derived from a control size is drift. */
   /* ── Cut corners ──
@@ -260,16 +243,6 @@ html[data-theme='dim'] {
   --fg-text: #f2f2f5;
   --fg-muted: #9b9ba6;
   --fg-dim: #767681;
-  /* Lighter surfaces than dark, so the plate highlight is eased back to stop
-     every panel looking wet. Brass, teal and glows are inherited unchanged. */
-  --fg-plate: linear-gradient(180deg, rgba(255, 255, 255, .04) 0%, rgba(0, 0, 0, .14) 100%);
-  --fg-grain: repeating-linear-gradient(
-    93deg,
-    rgba(255, 255, 255, .012) 0px,
-    rgba(255, 255, 255, .012) 1px,
-    rgba(0, 0, 0, .016) 1px,
-    rgba(0, 0, 0, .016) 3px
-  );
 }
 
 html[data-theme='light'] {
@@ -296,22 +269,19 @@ html[data-theme='light'] {
   --fg-accent-deep: #1a3fa8;
   --fg-gold: #b47a06;
   --fg-gold-soft: #d59a1e;
-  /* Darkened alongside --fg-gold: the gilt gradient blends the two, and
-     leaving this at the dark theme's value would wash out on white. */
+  /* Darkened alongside --fg-gold: leaving this at the dark theme's value
+     would wash out on white. */
   --fg-gold-deep: #8f5f05;
   --fg-red: #b3444f;
   /* Darkened for contrast on white, same as the accent above. */
   --fg-pos: #2f6b52;
   --fg-pos-soft: #2a5f49;
 
-  /* Metal reads as engraving on a light surface: the highlight goes away and
-     the bevel inverts, otherwise every panel looks like it is glowing. */
-  --fg-plate: linear-gradient(180deg, rgba(255, 255, 255, .7) 0%, rgba(0, 0, 0, .05) 100%);
+  /* The bevel inverts on a light surface, otherwise every panel looks like
+     it is glowing. */
   --fg-bevel: inset 0 1px 0 rgba(255, 255, 255, .9), inset 0 -1px 0 rgba(0, 0, 0, .09);
   --fg-glow-accent: 0 0 14px rgba(29, 78, 216, .18);
   --fg-glow-gold: 0 0 14px rgba(180, 122, 6, .22);
-  /* No brushed texture on light surfaces — it reads as dirt, not metal. */
-  --fg-grain: none;
   /* The structural edge inverts. An 8% WHITE hairline over a white panel is
      literally invisible, which would leave every container on this theme with
      no boundary at all now that the drop-shadows are gone. */
@@ -329,7 +299,7 @@ html[data-theme='light'] { color-scheme: light; }
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--fg-grain), var(--fg-bg);
+  background: var(--fg-bg);
   color: var(--fg-text);
   font-family: var(--fg-font);
   -webkit-font-smoothing: antialiased;
@@ -412,7 +382,7 @@ h1, h2, h3, h4 {
   gap: 10px;
   flex-wrap: wrap;
   padding: 6px 12px;
-  background: var(--fg-grain), var(--fg-plate), var(--fg-header);
+  background: var(--fg-header);
   /* Brass hairline: the one warm edge on the chrome, so the header reads as
      trimmed metal rather than a flat bar. */
   border-bottom: 1px solid var(--fg-hairline);
@@ -493,7 +463,7 @@ html[data-theme='light'] .dash__mark { filter: invert(1); }
   font-size: 12.5px;
   font-weight: 600;
   color: var(--fg-text);
-  background: var(--fg-plate), var(--fg-hover);
+  background: var(--fg-hover);
   border: 1px solid var(--fg-line);
   border-radius: var(--fg-r);
   box-shadow: var(--fg-bevel);
@@ -514,7 +484,7 @@ html[data-theme='light'] .dash__mark { filter: invert(1); }
   font-size: 13px;
   font-weight: 800;
   color: var(--fg-on-accent);
-  background: linear-gradient(135deg, var(--fg-accent), var(--fg-accent-deep));
+  background: var(--fg-accent-deep);
   border: 1px solid var(--fg-line);
   border-radius: var(--fg-r-pill);
   cursor: pointer;
@@ -556,7 +526,7 @@ html[data-theme='light'] .dash__mark { filter: invert(1); }
   box-shadow: 0 0 0 3px rgba(59, 124, 255, .4);
 }
 .dash__btn:hover {
-  background: var(--fg-plate), var(--fg-hover-2);
+  background: var(--fg-hover-2);
   border-color: var(--fg-gold);
   box-shadow: var(--fg-bevel), var(--fg-glow-gold);
 }
@@ -1081,10 +1051,7 @@ html[data-theme='light'] .dash__mark { filter: invert(1); }
   justify-content: center;
   min-height: 100vh;
   padding: 32px 20px;
-  /* A faint accent wash so the page reads as the front door, not a form. */
-  background:
-    radial-gradient(80vw 60vh at 50% -10%, rgba(59, 124, 255, .07), transparent 70%),
-    var(--fg-bg);
+  background: var(--fg-bg);
 }
 .auth__card {
   width: 100%;
@@ -1495,14 +1462,11 @@ html[data-theme='light'] .dash__mark { filter: invert(1); }
    the dots. Placed after the base rule so `top: auto` actually lands. */
 
 /* ── Site footer ────────────────────────── */
-/* Sits under every page from the root layout. The top hairline is drawn with a
-   gradient rather than a border so it fades out at the edges instead of
-   cutting hard against the page background. */
+/* Sits under every page from the root layout. */
 .foot {
   margin-top: 48px;
   background: var(--fg-panel-2);
   border-top: 1px solid var(--fg-line);
-  background-image: linear-gradient(180deg, rgba(59, 124, 255, .05), transparent 180px);
 }
 .foot__inner {
   max-width: 1180px;
@@ -1641,7 +1605,7 @@ html[data-theme='light'] .dash__mark { filter: invert(1); }
   max-height: calc(100dvh - 32px);
   display: flex;
   flex-direction: column;
-  background: var(--fg-plate), var(--fg-panel);
+  background: var(--fg-panel);
   border: 1px solid var(--fg-line);
   border-radius: var(--fg-r-lg);
   /* Brass hairline along the top edge, then the drop shadow. */
@@ -1823,7 +1787,7 @@ html[data-theme='light'] .wal__input {
   gap: 2px;
   padding: 6px 2px;
   color: var(--fg-muted);
-  background: var(--fg-plate), var(--fg-panel-2);
+  background: var(--fg-panel-2);
   border: 1px solid var(--fg-line);
   border-radius: var(--fg-r-lg);
   box-shadow: var(--fg-bevel);
@@ -1979,21 +1943,7 @@ html[data-theme='light'] .wal__input {
 }
 .vip__header h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; }
 .vip__header p { margin: 0; font-size: 13px; color: var(--fg-muted); }
-.vip__wheel-btn {
-  /* Used on a Link now that the wheel lives in the rewards hub, so it needs an
-     explicit display: an inline <a> ignores vertical padding. */
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 8px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--fg-gold);
-  background: rgba(217, 164, 65, .1);
-  border: 1px solid rgba(217, 164, 65, .4);
-  border-radius: var(--fg-r);
-  cursor: pointer;
-}
-.vip__wheel-btn:hover { background: rgba(217, 164, 65, .18); }
+
 
 .vip__cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .vip__card {
@@ -2041,7 +1991,7 @@ html[data-theme='light'] .wal__input {
 }
 .vip__bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--fg-accent), var(--fg-gold));
+  background: var(--fg-gold);
   /* Width only — the bar animates without repainting the page around it. */
   transition: width .4s ease;
 }
@@ -2141,7 +2091,7 @@ html[data-theme='light'] .wal__input {
   /* Borderless surface: the card is a block of colour against the darker page
      rather than an outlined box, which is what keeps a dense grid from reading
      as a wireframe. Separation comes from the surface step and the shadow. */
-  background: var(--fg-plate), var(--fg-panel);
+  background: var(--fg-panel);
   border: 1px solid transparent;
   border-radius: var(--fg-r-lg);
   box-shadow: var(--fg-bevel);
@@ -2176,7 +2126,7 @@ html[data-theme='light'] .wal__input {
   text-transform: uppercase;
   border-radius: var(--fg-r);
 }
-.tile__badge--hot { color: #2a1206; background: var(--fg-brass); }
+.tile__badge--hot { color: #2a1206; background: var(--fg-gold); }
 .tile__badge--new { color: var(--fg-on-accent); background: var(--fg-accent-deep); }
 
 .tile__link { position: absolute; inset: 0; z-index: 1; }
@@ -2366,7 +2316,7 @@ html[data-theme='light'] .wal__input {
 .dock { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 74px; }
 .dock__panel {
   padding: 8px;
-  background: var(--fg-plate), var(--fg-panel);
+  background: var(--fg-panel);
   border: 1px solid var(--fg-line);
   border-radius: var(--fg-r-lg);
   box-shadow: var(--fg-bevel);
@@ -2456,7 +2406,7 @@ html[data-theme='light'] .wal__input {
   flex-direction: column;
   gap: 14px;
   padding: 12px;
-  background: var(--fg-plate), var(--fg-panel);
+  background: var(--fg-panel);
   border: var(--fg-edge);
   border-radius: var(--fg-r-lg);
   box-shadow: var(--fg-bevel);
@@ -2644,13 +2594,10 @@ html[data-theme='light'] .wal__input {
 /* Buttons that were missing an explicit pointer. */
 .dash__cta, .dash__btn, .feed__tab, .bdm__play, .bdm__fair-toggle, .bdm__close, .bdm__copy { cursor: pointer; }
 
-/* Gradient shift on the primary action: a flat orange lit slightly from the
-   top edge, brightening on hover. Subtle enough to read as a light source
-   rather than a second colour. */
+/* The primary action glows on hover. */
 .dash__cta,
 .bdm__play,
 .tile__play {
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, 0));
   transition:
     background-color var(--fg-t),
     filter var(--fg-t),
@@ -2732,7 +2679,6 @@ html[data-theme='light'] .wal__input {
 .bdm__stat-value,
 .bdm__seed-value,
 .dock__jp-value,
-.rsm__price,
 .presence__count {
   font-family: var(--fg-num);
   font-variant-numeric: tabular-nums;
@@ -2783,25 +2729,16 @@ html[data-theme='light'] .wal__input {
 @media (max-width: 900px) { .presence { display: none; } }
 
 /* ── Shimmer skeletons ───────────────────────────────────
-   A highlight sweeping across a flat block. `background-position` animates on
-   the compositor and, unlike a moving pseudo-element, needs no extra node. */
+   A flat block pulsing in opacity, which animates on the compositor. */
 .shimmer {
   display: block;
   background-color: var(--fg-depth-2);
-  background-image: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, .06) 50%,
-    rgba(255, 255, 255, 0) 100%
-  );
-  background-size: 200% 100%;
-  background-repeat: no-repeat;
   border-radius: var(--fg-r);
-  animation: shimmer-sweep 1.4s ease-in-out infinite;
+  animation: shimmer-pulse 1.4s ease-in-out infinite;
 }
-@keyframes shimmer-sweep {
-  from { background-position: 150% 0; }
-  to { background-position: -50% 0; }
+@keyframes shimmer-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .55; }
 }
 
 /* Mirrors .tile's box model so the swap to real content shifts nothing. */
@@ -2951,189 +2888,6 @@ html[data-theme='light'] .wal__input {
 }
 .feed__list::-webkit-scrollbar-track { background: transparent; }
 
-/* ── Daily play streak ───────────────────────────────────
-   Ambient progress toward the next milestone. Every figure comes from
-   /api/streak/me — see StreakProgressBar.tsx. */
-.streak {
-  position: fixed;
-  left: 50%;
-  bottom: 92px;
-  transform: translateX(-50%);
-  z-index: 900;
-  width: min(420px, calc(100vw - 32px));
-  padding: 14px 16px;
-  background: color-mix(in srgb, var(--fg-panel) 96%, transparent);
-  border: var(--fg-edge);
-  border-radius: var(--fg-r-lg);
-  backdrop-filter: blur(12px);
-  /* Floats over the grid at z-index 900, so without this it swallows clicks
-     meant for the cards underneath — including Play now and the heart. The
-     panel only reports progress; its close button opts back in below. */
-  pointer-events: none;
-  animation: streak-in .34s cubic-bezier(.16, 1, .3, 1);
-}
-@keyframes streak-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(14px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-
-.streak__close {
-  pointer-events: auto;
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  width: 22px;
-  height: 22px;
-  font-size: 16px;
-  line-height: 1;
-  color: var(--fg-muted);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-}
-.streak__close:hover { color: var(--fg-text); }
-
-.streak__head { display: flex; align-items: center; gap: 10px; }
-.streak__flame { display: flex; color: #3b7cff; }
-.streak__day { display: block; font-size: 15px; font-weight: 800; color: var(--fg-text); }
-.streak__sub { font-size: 11.5px; color: var(--fg-muted); }
-
-.streak__road { margin-top: 12px; }
-.streak__track {
-  height: 6px;
-  background: var(--fg-line);
-  border-radius: var(--fg-r-sm);
-  overflow: hidden;
-}
-.streak__fill {
-  height: 100%;
-  background: linear-gradient(90deg, #3b7cff, #ffa04d);
-  border-radius: var(--fg-r-sm);
-  transition: width .5s cubic-bezier(.16, 1, .3, 1);
-}
-
-.streak__stops {
-  display: flex;
-  justify-content: space-between;
-  margin: 8px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.streak__stop { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.streak__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--fg-line-2);
-}
-.streak__stop--on .streak__dot {
-  background: #3b7cff;
-  box-shadow: 0 0 8px rgba(59, 124, 255, .7);
-}
-.streak__label { font-size: 10px; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
-.streak__stop--on .streak__label { color: var(--fg-text); }
-
-@media (prefers-reduced-motion: reduce) {
-  .streak { animation: none; }
-  .streak__fill { transition: none; }
-}
-
-/* ── Restore streak dialog ───────────────────────────── */
-.rsm__overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1300;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: rgba(0, 0, 0, .7);
-  backdrop-filter: blur(6px);
-}
-.rsm__panel {
-  position: relative;
-  width: min(400px, 100%);
-  padding: 14px;
-  background: var(--fg-panel);
-  border: 1px solid var(--fg-line);
-  border-radius: var(--fg-r-lg);
-  box-shadow: var(--fg-inset), 0 24px 60px -20px rgba(0, 0, 0, .8);
-  color: var(--fg-text);
-}
-/* Sits in the panel's own top-right corner, clear of the title's text box. */
-.rsm__close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  color: var(--fg-muted);
-  background: transparent;
-  border: 1px solid var(--fg-line);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: color var(--fg-snap), background-color var(--fg-snap),
-    border-color var(--fg-snap), transform var(--fg-snap);
-}
-.rsm__close:hover { color: var(--fg-text); background: var(--fg-hover); }
-.rsm__close:active { transform: scale(.94); }
-.rsm__close:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(59, 124, 255, .5);
-}
-/* Room for the button so a long heading cannot run under it. */
-.rsm__title { padding-right: 34px; }
-.rsm__title { margin: 0; font-size: 17px; font-weight: 800; color: var(--fg-text); }
-.rsm__copy { margin: 10px 0 0; font-size: 13px; line-height: 1.6; color: var(--fg-muted); }
-
-.rsm__price {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 16px;
-  padding: 8px 8px;
-  background: #0e0f12;
-  border: 1px solid #20242d;
-  border-radius: var(--fg-r-lg);
-  font-size: 13px;
-  color: #8a8f99;
-}
-.rsm__price b { font-size: 17px; color: #fff; font-variant-numeric: tabular-nums; }
-
-.rsm__error {
-  margin: 12px 0 0;
-  font-size: 12.5px;
-  color: #ff8a8a;
-}
-
-/* Both options share a row and comparable weight — the free path is a real
-   choice, not fine print under a highlighted upsell. */
-.rsm__actions { display: flex; gap: 10px; margin-top: 16px; }
-.rsm__skip, .rsm__pay {
-  flex: 1;
-  padding: 8px 8px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  border-radius: var(--fg-r-lg);
-  cursor: pointer;
-}
-.rsm__skip {
-  color: #d7dae0;
-  background: #20242d;
-  border: 1px solid #2a2f3a;
-}
-.rsm__skip:hover:not(:disabled) { background: #262b35; }
-.rsm__pay {
-  color: #0e0f12;
-  background: #3b7cff;
-  border: 0;
-}
-.rsm__pay:hover:not(:disabled) { background: #1f57d6; }
-.rsm__skip:disabled, .rsm__pay:disabled { opacity: .6; cursor: not-allowed; }
-
 /* ── Game poster cards ───────────────────────────────────
    Art fills the top, copy sits on a dark plate below. */
 .tile__art {
@@ -3159,14 +2913,13 @@ html[data-theme='light'] .wal__input {
 }
 .tile:hover .tile__img { transform: scale(1.05); }
 
-/* The copy plate. A gradient rather than a flat fill so the art fades into the
-   text instead of meeting it at a hard line. */
+/* The copy plate. */
 .tile__body {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 10px 12px 12px;
-  background: linear-gradient(180deg, rgba(11, 12, 16, .55), var(--fg-panel) 42%);
+  background: var(--fg-panel);
   border-top: 1px solid rgba(255, 255, 255, .04);
   /* Fixed height so a card with a text title (the icon fallback) is not taller
      than one whose title lives in the artwork — mixed heights break the row. */
@@ -3195,7 +2948,7 @@ html[data-theme='light'] .wal__input {
   gap: 10px;
   width: 100%;
   height: 100%;
-  background: var(--fg-plate), var(--fg-panel-2);
+  background: var(--fg-panel-2);
 }
 .tile__fallback-name {
   font-size: 14px;
@@ -3604,21 +3357,6 @@ html[data-theme='light'] .brandmark {
     transform var(--fg-t),
     filter var(--fg-t);
 }
-.dash__cta::after,
-.auth__submit::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    115deg,
-    transparent 20%,
-    rgba(255, 255, 255, .38) 48%,
-    transparent 72%
-  );
-  transform: translateX(-130%);
-  transition: transform .55s var(--fg-ease);
-}
 .dash__cta:hover:not(:disabled),
 .auth__submit:hover:not(:disabled) {
   border-color: var(--fg-accent);
@@ -3627,8 +3365,6 @@ html[data-theme='light'] .brandmark {
     0 0 22px rgba(59, 124, 255, .45),
     0 8px 26px -10px rgba(59, 124, 255, .65);
 }
-.dash__cta:hover:not(:disabled)::after,
-.auth__submit:hover:not(:disabled)::after { transform: translateX(130%); }
 
 /* The press. 0.95 is `active:scale-95`. */
 .dash__cta:active:not(:disabled),
@@ -3678,8 +3414,6 @@ html[data-theme='light'] .brandmark {
    with its own halo. Replaces the bare emblem, which read as a watermark. */
 
 @media (prefers-reduced-motion: reduce) {
-  .dash__cta::after,
-  .auth__submit::after { transition: none; }
   .tile { transform: none !important; }
 }
 
@@ -3742,7 +3476,6 @@ html[data-theme='light'] .brandmark {
 .rail__heading,
 .opt__label,
 .acc__section-title,
-.fm__stat span,
 .info__note b {
   font-size: 11px;
   font-weight: 700;
@@ -3752,7 +3485,6 @@ html[data-theme='light'] .brandmark {
   color: var(--fg-muted);
 }
 
-.fm__prize-title,
 .acc__section-title,
 .tile__fallback-name {
   font-size: 14px;
@@ -3765,7 +3497,6 @@ html[data-theme='light'] .brandmark {
    Every card lands on the same two steps — 16px of padding, 12px between
    children — and carries the inset highlight instead of a flat stroke. */
 .tile__body,
-.fm__card,
 .acc__section,
 .info__section,
 .game__panel,
@@ -3774,7 +3505,6 @@ html[data-theme='light'] .brandmark {
   padding: var(--fg-sp-4);
   box-shadow: var(--fg-inset);
 }
-.fm__card,
 .game__panel,
 .acc__section {
   display: flex;
@@ -3799,9 +3529,6 @@ html[data-theme='light'] .brandmark {
 .auth__submit,
 .authm__submit,
 .info__cta,
-.fm__btn,
-.fm__spin,
-.fm__task-btn,
 .acc__btn,
 .tile__fav,
 .tile__play,
@@ -3819,9 +3546,6 @@ html[data-theme='light'] .brandmark {
 .auth__submit:active:not(:disabled),
 .authm__submit:active:not(:disabled),
 .info__cta:active,
-.fm__btn:active:not(:disabled),
-.fm__spin:active:not(:disabled),
-.fm__task-btn:active:not(:disabled),
 .acc__btn:active,
 .tile__fav:active,
 .tile__play:active,
@@ -3837,7 +3561,6 @@ html[data-theme='light'] .brandmark {
 .dash__cta,
 .auth__submit,
 .authm__submit,
-.fm__spin,
 .btn--primary {
   color: #0b0e14;
   font-weight: 700;
@@ -3847,7 +3570,6 @@ html[data-theme='light'] .brandmark {
 .dash__cta:hover:not(:disabled),
 .auth__submit:hover:not(:disabled),
 .authm__submit:hover:not(:disabled),
-.fm__spin:hover:not(:disabled),
 .btn--primary:hover:not(:disabled) {
   box-shadow: var(--fg-cta-glow);
 }
@@ -4001,8 +3723,6 @@ html[data-theme='light'] .rail__mark { filter: invert(1); }
   .bdm__copy,
   .wal__close,
   .glm__close,
-  .streak__close,
-  .rsm__close,
   .fg-toast__close {
     position: relative;
   }
@@ -4011,8 +3731,6 @@ html[data-theme='light'] .rail__mark { filter: invert(1); }
   .bdm__copy::after,
   .wal__close::after,
   .glm__close::after,
-  .streak__close::after,
-  .rsm__close::after,
   .fg-toast__close::after {
     content: '';
     position: absolute;
@@ -4167,7 +3885,6 @@ input[type='number'],
 .auth__brand,
 .foot__brand,
 .glm__title,
-.rsm__title,
 .bdm__title,
 .favs__head h1,
 .feed__header h3 {
@@ -4178,7 +3895,7 @@ input[type='number'],
 /* Section headings above each row of games. 17px/800 in Inter became a shout
    in Unbounded; 15px/600 holds the same weight on the page. */
 .glm__title      { font-size: 17px; font-weight: 600; }
-.rsm__title      { font-size: 15px; font-weight: 600; }
+
 .favs__head h1   { font-size: 18px; font-weight: 600; }
 
 /* ── Numerals ──
@@ -4193,7 +3910,6 @@ input[type='number'],
 .dock__jp-value,
 .bdm__stat-value,
 .bdm__seed-value,
-.rsm__price,
 .tile__badge {
   font-family: var(--fg-num);
   font-variant-numeric: tabular-nums;
@@ -4305,21 +4021,12 @@ input[type='number'],
   border-radius: var(--fg-r-lg);
 }
 
-/* Fade the trailing edge only while there is more row to reach. Applied to the
-   track rather than to an overlay element so it cannot intercept a click. */
-.shelf__track--more {
-  mask-image: linear-gradient(90deg, #000 calc(100% - 44px), transparent 100%);
-}
-
 .shelf__cell { min-width: 0; }
 .shelf__cell .tile { height: 100%; }
 
 @media (max-width: 720px) {
   .shelf__track { grid-auto-columns: 132px; }
   .shelf--lead .shelf__track { grid-auto-columns: 158px; }
-  /* The mask costs more than it says on a narrow screen, where the cut tile is
-     already unmistakable. */
-  .shelf__track--more { mask-image: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4584,4 +4291,222 @@ body:has(.cc) .sup__panel { bottom: 96px; }
   .cc__actions { width: 100%; }
   /* Equal width on a phone too, rather than letting the longer label win. */
   .cc__btn { flex: 1 1 0; }
+}
+
+/* ═══════════════════════════════════════════════
+   Neumorphic game surfaces
+   ═══════════════════════════════════════════════
+   Every game sits on one soft surface (`.neu` — applied by GameShell, the slot
+   machine, Chicken Road and Avia Masters). Its stage, panel and controls
+   are the same colour as the surface and are told apart only by a paired soft
+   shadow — dark down-right, light up-left — raised for things you can press,
+   pressed in for wells, inputs and the selected option. Shadows only: no
+   gradients. The boards paint the same surface on canvas (BOARD.bg in
+   components/canvas/three/palette.ts), so the stage and the board meet
+   without a seam.
+
+   Scoped `.neu .x` so these outrank the injected component styles, while the
+   components' own :disabled and :focus-visible rules (same specificity,
+   injected later) still win. */
+:root,
+html[data-theme='dark'] {
+  --neu-surface: #1b1f28;
+  --neu-dark: rgba(4, 6, 10, .6);
+  --neu-light: rgba(255, 255, 255, .055);
+}
+html[data-theme='dim'] {
+  --neu-surface: #252932;
+  --neu-dark: rgba(6, 8, 12, .5);
+  --neu-light: rgba(255, 255, 255, .07);
+}
+html[data-theme='light'] {
+  --neu-surface: #e4e8ef;
+  --neu-dark: rgba(150, 163, 186, .6);
+  --neu-light: rgba(255, 255, 255, .95);
+}
+:root {
+  --neu-raised: 6px 6px 14px var(--neu-dark), -6px -6px 14px var(--neu-light);
+  --neu-raised-sm: 3px 3px 8px var(--neu-dark), -3px -3px 8px var(--neu-light);
+  --neu-pressed: inset 3px 3px 7px var(--neu-dark), inset -3px -3px 7px var(--neu-light);
+  --neu-pressed-lg: inset 6px 6px 14px var(--neu-dark), inset -6px -6px 14px var(--neu-light);
+  --neu-r: 20px;
+}
+
+.neu {
+  padding: 16px;
+  background: var(--neu-surface);
+  border-radius: var(--neu-r);
+}
+
+/* Wells: the stage the board sits in. */
+.neu .game__stage {
+  background: var(--neu-surface);
+  border-color: transparent;
+  border-radius: var(--neu-r);
+  box-shadow: var(--neu-pressed-lg);
+}
+
+/* Raised: the panels, and the slot machine's cabinet. */
+.neu .game__panel,
+.neu .slot__panel,
+.neu .slot__cabinet {
+  background: var(--neu-surface);
+  border-color: transparent;
+  border-radius: var(--neu-r);
+  box-shadow: var(--neu-raised);
+}
+.neu .slot__screen {
+  border-color: var(--neu-surface);
+  box-shadow: var(--neu-raised-sm);
+}
+
+/* Inputs are pressed in. */
+.neu .fg-bet__input,
+.neu .slot__input {
+  background: var(--neu-surface);
+  border-color: transparent;
+  box-shadow: var(--neu-pressed);
+}
+.neu .fg-bet__input:focus-visible,
+.neu .slot__input:focus-visible {
+  box-shadow: var(--neu-pressed), var(--fg-ring);
+}
+
+/* Small controls stand proud; the selected one is pressed in and takes the
+   accent as text rather than as a fill. */
+.neu .opt__chip,
+.neu .fg-bet__mod,
+.neu .slot__mod,
+.neu .slot__toggle {
+  background: var(--neu-surface);
+  border-color: transparent;
+  box-shadow: var(--neu-raised-sm);
+  transition: box-shadow var(--fg-t), color var(--fg-t), transform var(--fg-t);
+}
+.neu .opt__chip:hover:not(:disabled),
+.neu .fg-bet__mod:hover:not(:disabled),
+.neu .slot__mod:hover:not(:disabled),
+.neu .slot__toggle:hover {
+  color: var(--fg-text);
+  background: var(--neu-surface);
+  border-color: transparent;
+}
+.neu .opt__chip:active:not(:disabled),
+.neu .fg-bet__mod:active:not(:disabled),
+.neu .slot__mod:active:not(:disabled),
+.neu .slot__toggle:active,
+.neu .opt__chip[aria-pressed='true'],
+.neu .slot__toggle[aria-pressed='true'] {
+  color: var(--fg-accent);
+  background: var(--neu-surface);
+  border-color: transparent;
+  box-shadow: var(--neu-pressed);
+  transform: none;
+}
+
+/* The primary action keeps its colour fill and is raised like everything
+   else; pressing it sinks it. */
+.neu .fg-bet__action,
+.neu .slot__spin {
+  box-shadow: var(--neu-raised-sm);
+}
+.neu .fg-bet__action:hover:not(:disabled),
+.neu .slot__spin:hover:not(:disabled) {
+  box-shadow: var(--neu-raised);
+}
+.neu .fg-bet__action:active:not(:disabled),
+.neu .slot__spin:active:not(:disabled) {
+  box-shadow: inset 3px 3px 7px rgba(0, 0, 0, .35), inset -2px -2px 6px rgba(255, 255, 255, .12);
+  transform: none;
+}
+
+/* ── Chicken Road and Avia Masters ──
+   Same language, tuned to keep each game's own identity: Chicken keeps its
+   orange board frame, and the coloured action buttons keep their fills. */
+.neu .chr__panel,
+.neu .avia__panel {
+  background: var(--neu-surface);
+  border-color: transparent;
+  border-radius: var(--neu-r);
+  box-shadow: var(--neu-raised);
+}
+.neu .chr__stage,
+.neu .avia__stage {
+  border-radius: var(--neu-r);
+  box-shadow: var(--neu-raised);
+}
+
+/* Inputs, readouts and the difficulty track are pressed in. */
+.neu .chr__input,
+.neu .avia__input,
+.neu .chr__stat,
+.neu .chr__modes {
+  background: var(--neu-surface);
+  border-color: transparent;
+  box-shadow: var(--neu-pressed);
+}
+.neu .chr__input:focus-visible,
+.neu .avia__input:focus-visible {
+  box-shadow: var(--neu-pressed), var(--fg-ring);
+}
+
+/* Small controls stand proud… */
+.neu .chr__mod,
+.neu .chr__quick button,
+.neu .avia__mod,
+.neu .avia__speed,
+.neu .avia__safe {
+  background: var(--neu-surface);
+  border-color: transparent;
+  box-shadow: var(--neu-raised-sm);
+  transition: box-shadow var(--fg-t), color var(--fg-t), transform var(--fg-t);
+}
+.neu .chr__mod:hover:not(:disabled),
+.neu .chr__quick button:hover:not(:disabled),
+.neu .avia__mod:hover:not(:disabled),
+.neu .avia__speed:hover:not(:disabled) {
+  color: var(--fg-text);
+  background: var(--neu-surface);
+  border-color: transparent;
+}
+/* …and the chosen one is pressed in, taking the accent as its text colour. */
+.neu .chr__mod:active:not(:disabled),
+.neu .chr__quick button:active:not(:disabled),
+.neu .chr__quick button[aria-pressed='true'],
+.neu .avia__mod:active:not(:disabled),
+.neu .avia__speed--on,
+.neu .avia__speed--on:hover:not(:disabled),
+.neu .avia__safe--on {
+  color: var(--fg-accent);
+  background: var(--neu-surface);
+  border-color: transparent;
+  box-shadow: var(--neu-pressed);
+  transform: none;
+}
+.neu .avia__speed--on small { color: var(--fg-accent); opacity: .85; }
+
+/* The difficulty pills sit inside the pressed track; the chosen one is raised
+   out of it in the accent. */
+.neu .chr__mode--on,
+.neu .chr__mode--on:hover:not(:disabled) {
+  box-shadow: var(--neu-raised-sm);
+}
+
+/* Coloured actions keep their fill and are raised; pressing sinks them. */
+.neu .chr__action,
+.neu .avia__action {
+  box-shadow: var(--neu-raised-sm);
+}
+.neu .chr__action:hover:not(:disabled),
+.neu .avia__action:hover:not(:disabled) {
+  box-shadow: var(--neu-raised);
+}
+.neu .chr__action:active:not(:disabled),
+.neu .avia__action:active:not(:disabled) {
+  box-shadow: inset 3px 3px 7px rgba(0, 0, 0, .35), inset -2px -2px 6px rgba(255, 255, 255, .12);
+  transform: none;
+}
+.neu .chr__action:disabled,
+.neu .avia__action:disabled {
+  box-shadow: none;
 }

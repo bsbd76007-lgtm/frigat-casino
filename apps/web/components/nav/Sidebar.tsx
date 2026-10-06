@@ -145,11 +145,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               label={t('nav.referrals')}
             />
             <RailLink
-              href="/freemoney"
-              active={pathname === '/freemoney'}
+              href="/bonuses"
+              active={pathname === '/bonuses'}
               onNavigate={onClose}
               icon={<RailIcon name="rewards" />}
-              label={t('nav.freeMoney')}
+              label={t('nav.bonuses')}
             />
             <RailLink
               href="/architecture"

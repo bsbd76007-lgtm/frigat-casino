@@ -14,14 +14,13 @@ import type { FastifyInstance } from 'fastify';
 
 import { registerHealthRoutes } from './health.routes';
 import { registerAuthRoutes } from './auth.routes';
+import { registerAccountRoutes } from './account.routes';
 import { registerAdminRoutes } from './admin';
 import { registerPaymentRoutes } from './payment.routes';
 import { registerSupportRoutes } from './support.routes';
 import { registerReferralRoutes } from './referral.routes';
 import { registerVipRoutes } from './vip.routes';
-import { registerStreakRoutes } from './streak.routes';
-import { registerRewardsRoutes } from './rewards.routes';
-import { registerRaffleRoutes } from './raffle.routes';
+import { registerBonusRoutes } from './bonuses.routes';
 import { registerSeedRoutes } from './seed.routes';
 import { registerGameRoutes } from './games';
 
@@ -30,6 +29,9 @@ export function registerRoutes(app: FastifyInstance) {
 
   // Public credential endpoints (register / login). Unauthenticated by design.
   registerAuthRoutes(app);
+
+  // The signed-in player's own security: 2FA, the Telegram link, deletion.
+  registerAccountRoutes(app);
 
   // Everything under ./admin is behind requireAdmin.
   registerAdminRoutes(app);
@@ -43,9 +45,7 @@ export function registerRoutes(app: FastifyInstance) {
   // Player rewards and progression.
   registerReferralRoutes(app);
   registerVipRoutes(app);
-  registerStreakRoutes(app);
-  registerRewardsRoutes(app);
-  registerRaffleRoutes(app);
+  registerBonusRoutes(app);
 
   // Player-scoped provably-fair seeds (read active pair, rotate).
   registerSeedRoutes(app);

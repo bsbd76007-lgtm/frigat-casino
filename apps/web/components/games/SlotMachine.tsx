@@ -468,14 +468,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
       ctx.lineTo(width, row * cellH);
       ctx.stroke();
     }
-
-    // Glass: a soft vignette so the reels sit behind a screen.
-    const glass = ctx.createLinearGradient(0, 0, 0, height);
-    glass.addColorStop(0, 'rgba(0,0,0,.55)');
-    glass.addColorStop(0.5, 'rgba(0,0,0,0)');
-    glass.addColorStop(1, 'rgba(0,0,0,.55)');
-    ctx.fillStyle = glass;
-    ctx.fillRect(0, 0, width, height);
   }, []);
 
   const canvasRef = useCanvasRenderer(draw);
@@ -484,7 +476,7 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
   const hasWin = compareDecimal(totalWin, '0') > 0;
 
   return (
-    <div className="slot">
+    <div className="slot neu">
       {/* ---------- Cabinet ---------- */}
       <div className="slot__cabinet">
         <div className="slot__marquee">

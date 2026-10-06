@@ -40,6 +40,9 @@ import {
   PaymentConfigError,
   PaymentProviderError,
   WalletNotFoundError,
+  MIN_WITHDRAWAL_USD,
+  WithdrawalBelowMinimumError,
+  BonusWageringError,
 } from '../services/payment.service';
 
 
@@ -262,6 +265,8 @@ export function registerPaymentRoutes(app: FastifyInstance) {
 
   app.get('/api/payments/config', async () => ({
     currencies: SUPPORTED_CURRENCIES,
+    // USD, the same for every coin — see MIN_WITHDRAWAL_USD.
+    minWithdrawal: MIN_WITHDRAWAL_USD,
   }));
 
   app.get('/api/payments/history', async (req, reply) => {
@@ -285,6 +290,20 @@ function replyForPaymentError(
 ) {
   if (err instanceof InsufficientFundsError) {
     return reply.code(409).send({ error: 'insufficient_funds' });
+  }
+  if (err instanceof WithdrawalBelowMinimumError) {
+    return reply.code(400).send({
+      error: 'below_minimum_withdrawal',
+      minimum: MIN_WITHDRAWAL_USD,
+      detail: err.message,
+    });
+  }
+  if (err instanceof BonusWageringError) {
+    return reply.code(409).send({
+      error: 'bonus_wagering_required',
+      remaining: err.remaining,
+      detail: err.message,
+    });
   }
   if (err instanceof AccountFrozenError) {
     return reply.code(409).send({ error: 'account_frozen' });

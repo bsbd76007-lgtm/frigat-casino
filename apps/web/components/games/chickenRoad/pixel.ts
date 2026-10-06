@@ -120,7 +120,8 @@ export type CarPalette = (typeof CAR_PALETTES)[number];
  * remainder flickers between two shades, which is the one artefact that most
  * reliably breaks the illusion.
  */
-export const snap = (n: number): number => Math.round(n / PIXEL_SIZE) * PIXEL_SIZE;
+export const snap = (n: number): number =>
+  PIXEL_SIZE > 1 ? Math.round(n / PIXEL_SIZE) * PIXEL_SIZE : n;
 
 /** A grid-aligned rectangle, guaranteed at least one art pixel each way. */
 export function px(

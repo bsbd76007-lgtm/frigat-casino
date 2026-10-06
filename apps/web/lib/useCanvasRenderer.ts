@@ -187,6 +187,7 @@ export function useCanvasRenderer(
           ctx.imageSmoothingQuality = 'high';
           ctx.clearRect(0, 0, size.width, size.height);
           drawRef.current({ ctx, ...frame });
+          overlayRef.current?.({ ctx, ...frame });
         }
       }
       previousAt = now;

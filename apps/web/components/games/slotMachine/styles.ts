@@ -23,17 +23,13 @@ export const CSS = `
 /* ── Cabinet ───────────────────────────────── */
 .slot__cabinet { position: relative; width: 100%; max-width: 760px; min-width: 0;
   padding: 12px; box-sizing: border-box; border-radius: var(--fg-r-lg);
-  background: linear-gradient(180deg, #1b2735 0%, #0d141c 100%);
+  background: #141e28;
   border: 1px solid #253243;
   box-shadow: 0 30px 60px -20px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.06); }
 
 .slot__marquee { display: flex; align-items: center; justify-content: space-between;
   gap: 12px; margin-bottom: 14px; padding: 0 4px; }
-/* Solid gold, not clipped gradient text. At 15px with .18em tracking a three-stop
-   gradient reads as a muddy shimmer rather than as gilding, and a transparent colour
-   leaves the marquee invisible anywhere background-clip is unavailable or
-   overridden (forced-colors, older WebKit). Same call the header lockup already
-   made when its gilding moved into the SVG. */
+/* Solid gold. */
 .slot__title { margin: 0; font-size: 15px; font-weight: 900; letter-spacing: .18em;
   text-transform: uppercase; color: var(--fg-gold); }
 .slot__meta { display: flex; gap: 8px; }
@@ -52,7 +48,7 @@ export const CSS = `
 /* Win banner rides over the reels without stealing a click from SPIN. */
 .slot__flash { position: absolute; inset: auto 0 0 0; padding: 10px;
   text-align: center; font-size: 15px; font-weight: 900; letter-spacing: .04em;
-  color: var(--fg-bg); background: linear-gradient(90deg, rgba(250,204,21,.94), rgba(34,197,94,.94));
+  color: var(--fg-bg); background: rgba(250,204,21,.94);
   pointer-events: none; animation: slot-flash-in .35s ease both; }
 @keyframes slot-flash-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
@@ -90,26 +86,17 @@ export const CSS = `
 /* ── SPIN ──────────────────────────────────── */
 .slot__spin { position: relative; width: 100%; padding: 12px; overflow: hidden;
   font-family: inherit; font-size: 18px; font-weight: 900; letter-spacing: .12em;
-  text-transform: uppercase; color: var(--fg-bg);
-  background: linear-gradient(90deg, var(--fg-accent), var(--fg-accent-deep)); border: none;
+  text-transform: uppercase; color: var(--fg-on-accent);
+  background: var(--fg-accent-deep); border: none;
   border-radius: var(--fg-r-lg); cursor: pointer;
   box-shadow: 0 12px 24px -6px rgba(34,197,94,.5);
   transition: background var(--fg-t), box-shadow var(--fg-t), transform var(--fg-t); }
-.slot__spin:hover:not(:disabled) { background: linear-gradient(90deg, var(--fg-pos), var(--fg-accent));
+.slot__spin:hover:not(:disabled) { background: var(--fg-accent-mid);
   box-shadow: 0 16px 30px -6px rgba(34,197,94,.7); }
 .slot__spin:active:not(:disabled) { transform: translateY(2px); }
 .slot__spin:focus-visible { outline: none; box-shadow: var(--fg-ring); }
 .slot__spin:disabled { color: var(--fg-muted);
-  background: linear-gradient(90deg, var(--fg-line), #142029); box-shadow: none; cursor: not-allowed; }
-/* Sheen sweeps only while the button is live, so "armed" reads at a glance. */
-.slot__spin::after { content: ''; position: absolute; top: 0; bottom: 0; width: 40%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
-  transform: translateX(-150%); }
-.slot__spin:not(:disabled)::after { animation: slot-sheen 2.6s ease-in-out infinite; }
-@keyframes slot-sheen {
-  0%, 55% { transform: translateX(-150%); }
-  100% { transform: translateX(320%); }
-}
+  background: var(--fg-line); box-shadow: none; cursor: not-allowed; }
 .slot__spin--busy { animation: slot-pulse 1s ease-in-out infinite; }
 @keyframes slot-pulse { 50% { opacity: .72; } }
 

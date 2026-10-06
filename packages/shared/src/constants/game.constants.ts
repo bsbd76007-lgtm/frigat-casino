@@ -30,10 +30,10 @@ export const MINES = {
  * at a fixed RTP a player's chance of winning a round is rtp / (the multiplier
  * they bank), so a board that lets them bank 1.08x wins nine rounds in ten and
  * feels free. Cash out stays locked until the lane reached pays at least this,
- * which caps any strategy's win rate at rtp / 2 ≈ 49% — the edge is untouched,
+ * which caps any strategy's win rate at rtp / 2 ≈ 47% — the edge is untouched,
  * every lane is still priced at exactly (1 - edge) / P(reach).
  *
- * `maxMultiplier` ends the road. The ladder is geometric (the 75% mode passes
+ * `maxMultiplier` ends the road. The ladder is geometric (the 85% mode passes
  * 10^12 by lane 20), and a game with no admin GameLimit row gets no payout cap
  * at all, so the engine has to bound itself: a mode's last lane is the deepest
  * one priced at or under this, and reaching it cashes out automatically.
@@ -42,11 +42,18 @@ export const CHICKEN = {
   maxMultiplier: 10_000,
   minCashoutMultiplier: 2,
   ramp: { start: 0.4, lanes: 5 },
+  /**
+   * Five difficulties. The hazard is the per-lane crash chance once the ramp
+   * has run in; the ladder is priced off it, so a harder mode pays more per
+   * lane at exactly the same edge — the difficulty and the multiplier are one
+   * dial, not two.
+   */
   modes: {
-    low: { hazard: 0.15 },
-    medium: { hazard: 0.25 },
+    low: { hazard: 0.2 },
+    medium: { hazard: 0.3 },
     high: { hazard: 0.5 },
-    extreme: { hazard: 0.75 },
+    extreme: { hazard: 0.7 },
+    hardcore: { hazard: 0.85 },
   },
 } as const;
 
@@ -61,42 +68,161 @@ export function chickenHazardAt(mode: ChickenMode, lane: number): number {
 
 /**
  * Avia Masters. One bet is one flight, decided whole from the seed: the flight
- * meets `flightEvents` pickups or rockets in turn, each applying
+ * meets a run of pickups and bombs in turn, each applying
  *
  *     m ← m · mul + add          (starting from m = 1)
  *
- * and then either lands on the carrier or ditches. The landing draw is
- * independent of the flight, and its probability is what holds the edge:
+ * and then either lands on one of the landing spots or ditches. A landing pays
+ * the flight's multiplier times the spot's bonus. The landing draw is
+ * independent of the flight and the spot, and its probability is what holds
+ * the edge:
  *
- *     P(land) = (1 - edge) / E[M]
+ *     P(land) = (1 - edge) / (E[M] · E[spot])
  *
  * E[M] is exact, not simulated — every event is independent of the running
- * multiplier, so E[m_{i+1}] = E[mul]·E[m_i] + E[add] (see avia.engine.ts).
- * With this table ~17.5% of flights land, and a landing pays a median ~3.2x.
- * That is the difficulty dial: raising a multiplier or a weight makes flights
- * richer and landings rarer, never a looser edge.
+ * multiplier, so E[m_{i+1}] = E[mul]·E[m_i] + E[add].
+ *
+ * Three speeds, each its own table. A faster plane meets fewer events but more
+ * of them are bombs and the bubbles are richer, so E[M] rises and landings get
+ * rarer: at a 6% edge roughly 14.6% of slow flights land, 12.2% of fast ones
+ * and 9.0% of turbo ones. The edge is identical in all three.
+ *
+ * `safeLanding` buys a guaranteed landing for a flat fee. A flat fee is only
+ * safe for the house on small stakes — a guaranteed landing on a large bet is
+ * worth far more than the fee — so it is offered only up to the stake at which
+ *
+ *     stake · E[M] · E[spot] ≤ (1 - edge) · (stake + fee)
+ *
+ * still holds (`aviaSafeLandingMaxStake`). Below that cap the round returns at
+ * most (1 - edge) of everything paid in, fee included.
  *
  * `maxMultiplier` bounds a freak run of stacked multipliers. The cap can only
- * lower a payout, so P(land) computed from the uncapped expectation leaves the
- * RTP at or under target, and reaching it takes a run of stacked multipliers
- * far rarer than one flight in a million.
+ * lower a payout, so every price computed from the uncapped expectation leaves
+ * the RTP at or under target.
  */
 export const AVIA = {
-  flightEvents: { min: 6, max: 12 },
   maxMultiplier: 10_000,
   events: [
-    { kind: 'add025', label: '+0.25', mul: 1, add: 0.25, weight: 10 },
-    { kind: 'add05', label: '+0.5', mul: 1, add: 0.5, weight: 8 },
-    { kind: 'add1', label: '+1', mul: 1, add: 1, weight: 4 },
-    { kind: 'add2', label: '+2', mul: 1, add: 2, weight: 1.5 },
-    { kind: 'x2', label: 'x2', mul: 2, add: 0, weight: 3.5 },
-    { kind: 'x3', label: 'x3', mul: 3, add: 0, weight: 1 },
-    { kind: 'x5', label: 'x5', mul: 5, add: 0, weight: 0.2 },
-    { kind: 'rocket', label: '÷2', mul: 0.5, add: 0, weight: 9 },
+    { kind: 'add025', label: '+0.25', mul: 1, add: 0.25 },
+    { kind: 'add05', label: '+0.5', mul: 1, add: 0.5 },
+    { kind: 'add1', label: '+1', mul: 1, add: 1 },
+    { kind: 'add2', label: '+2', mul: 1, add: 2 },
+    { kind: 'add5', label: '+5', mul: 1, add: 5 },
+    { kind: 'x2', label: 'x2', mul: 2, add: 0 },
+    { kind: 'x3', label: 'x3', mul: 3, add: 0 },
+    { kind: 'x5', label: 'x5', mul: 5, add: 0 },
+    { kind: 'x10', label: 'x10', mul: 10, add: 0 },
+    { kind: 'rocket', label: 'x0.5', mul: 0.5, add: 0 },
+    { kind: 'bomb', label: 'x0.25', mul: 0.25, add: 0 },
   ],
+  modes: {
+    slow: {
+      flightEvents: { min: 10, max: 16 },
+      weights: {
+        add025: 12, add05: 9, add1: 4, add2: 1.2, add5: 0.3,
+        x2: 2.5, x3: 0.7, x5: 0.15, x10: 0.03, rocket: 9, bomb: 2,
+      },
+    },
+    fast: {
+      flightEvents: { min: 8, max: 13 },
+      weights: {
+        add025: 8, add05: 7, add1: 4.5, add2: 2, add5: 0.8,
+        x2: 3.5, x3: 1.2, x5: 0.4, x10: 0.1, rocket: 11, bomb: 3.5,
+      },
+    },
+    turbo: {
+      flightEvents: { min: 6, max: 10 },
+      weights: {
+        add025: 4, add05: 5, add1: 4, add2: 3, add5: 1.6,
+        x2: 4, x3: 2, x5: 0.8, x10: 0.25, rocket: 12, bomb: 5,
+      },
+    },
+  },
+  /** Where a landing can come down, and what each multiplies the flight by. */
+  spots: [
+    { id: 'carrier', label: 'Carrier', mul: 1, weight: 6 },
+    { id: 'island', label: 'Island', mul: 1.5, weight: 3 },
+    { id: 'rig', label: 'Oil rig', mul: 3, weight: 1 },
+  ],
+  safeLanding: { fee: 5 },
 } as const;
 
+/** The draw that picks a landing spot — far past any flight's event cursors. */
+export const AVIA_SPOT_CURSOR = 1000;
+
 export type AviaEventKind = (typeof AVIA.events)[number]['kind'];
+export type AviaMode = keyof typeof AVIA.modes;
+export type AviaSpotId = (typeof AVIA.spots)[number]['id'];
+
+export interface AviaEventSpec {
+  kind: AviaEventKind;
+  label: string;
+  mul: number;
+  add: number;
+  weight: number;
+}
+
+export function isAviaMode(value: unknown): value is AviaMode {
+  return typeof value === 'string' && Object.hasOwn(AVIA.modes, value);
+}
+
+/** A mode's event table, with each kind's weight attached. Zero weights drop out. */
+export function aviaEventTable(mode: AviaMode): AviaEventSpec[] {
+  const weights = AVIA.modes[mode].weights as Record<AviaEventKind, number>;
+  return AVIA.events
+    .map((e) => ({ ...e, weight: weights[e.kind] ?? 0 }))
+    .filter((e) => e.weight > 0);
+}
+
+/** Picks from a weighted table with one uniform draw in [0, 1). */
+export function aviaPick<T extends { weight: number }>(table: readonly T[], u: number): T {
+  const total = table.reduce((sum, e) => sum + e.weight, 0);
+  let roll = u * total;
+  for (const entry of table) {
+    roll -= entry.weight;
+    if (roll < 0) return entry;
+  }
+  return table[table.length - 1];
+}
+
+/** E[M] over a whole flight in `mode` — exact, from the table alone. */
+export function aviaExpectedMultiplier(mode: AviaMode): number {
+  const table = aviaEventTable(mode);
+  const total = table.reduce((sum, e) => sum + e.weight, 0);
+  const meanMul = table.reduce((s, e) => s + e.weight * e.mul, 0) / total;
+  const meanAdd = table.reduce((s, e) => s + e.weight * e.add, 0) / total;
+  const { min, max } = AVIA.modes[mode].flightEvents;
+  let sum = 0;
+  for (let n = min; n <= max; n += 1) {
+    let m = 1;
+    for (let i = 0; i < n; i += 1) m = meanMul * m + meanAdd;
+    sum += m;
+  }
+  return sum / (max - min + 1);
+}
+
+/** E[spot bonus] for a landing. */
+export function aviaExpectedSpot(): number {
+  const total = AVIA.spots.reduce((sum, s) => sum + s.weight, 0);
+  return AVIA.spots.reduce((s, spot) => s + spot.weight * spot.mul, 0) / total;
+}
+
+/** The chance a flight lands, priced so a round returns 1 - edge. */
+export function aviaLandingChance(mode: AviaMode, edge: number): number {
+  return (1 - edge) / (aviaExpectedMultiplier(mode) * aviaExpectedSpot());
+}
+
+/**
+ * The largest stake a safe landing may cover in `mode`, floored to the cent:
+ * the stake at which a guaranteed landing still returns no more than
+ * (1 - edge) of stake plus fee.
+ */
+export function aviaSafeLandingMaxStake(mode: AviaMode, edge: number): number {
+  const rtp = 1 - edge;
+  const value = aviaExpectedMultiplier(mode) * aviaExpectedSpot();
+  if (value <= rtp) return Number.POSITIVE_INFINITY;
+  return Math.floor(((rtp * AVIA.safeLanding.fee) / (value - rtp)) * 100) / 100;
+}
 
 export const CRASH = {
   bettingWindowMs: 5000,

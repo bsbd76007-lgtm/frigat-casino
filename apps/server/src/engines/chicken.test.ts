@@ -58,7 +58,7 @@ describe('chicken — ladder', () => {
       expect(multiplierAt(mode, last + 1)).toBeGreaterThan(CHICKEN.maxMultiplier);
     }
     // Pinned so a hazard or cap change is a visible decision, not a side effect.
-    expect(MODES.map(maxLanes)).toEqual([58, 33, 15, 8]);
+    expect(MODES.map(maxLanes)).toEqual([43, 27, 15, 9, 7]);
   });
 
   it('ramps the hazard in, so the first hops pay less than a flat rate would', () => {
@@ -76,7 +76,7 @@ describe('chicken — ladder', () => {
     }
   });
 
-  it('locks cash out until a lane pays the minimum, capping any win rate near 49%', () => {
+  it('locks cash out until a lane pays the minimum, capping any win rate near 47%', () => {
     for (const mode of MODES) {
       const lane = minCashoutLane(mode);
       expect(multiplierAt(mode, lane)).toBeGreaterThanOrEqual(CHICKEN.minCashoutMultiplier);
@@ -87,7 +87,7 @@ describe('chicken — ladder', () => {
       expect(reach(mode, lane)).toBeLessThanOrEqual(RTP / CHICKEN.minCashoutMultiplier + 1e-12);
     }
     // Pinned so a hazard, ramp or minimum change is a visible decision.
-    expect(MODES.map(minCashoutLane)).toEqual([6, 5, 3, 2]);
+    expect(MODES.map(minCashoutLane)).toEqual([5, 4, 3, 2, 2]);
   });
 
   it('rejects a lane that is not a non-negative integer', () => {
@@ -149,7 +149,7 @@ describe('chicken — outcomes', () => {
       const bust = bustLane(mode, ctx(n, 'd'.repeat(64)));
       if (bust === null || bust > target) returned += multiplierAt(mode, target);
     }
-    // multiplier ≈ 1.52, so the per-round sd is ~0.6 and the mean's ~0.003.
+    // multiplier ≈ 1.6, so the per-round sd is ~0.65 and the mean's ~0.003.
     expect(Math.abs(returned / rounds - RTP)).toBeLessThan(0.03);
   });
 });

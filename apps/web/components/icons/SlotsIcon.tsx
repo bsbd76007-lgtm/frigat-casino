@@ -10,7 +10,6 @@ const REELS = [
 
 export function SlotsIcon({ size = 40, title, ...rest }: GameIconProps) {
   const uid = useId().replace(/:/g, '');
-  const cabinet = `slots-cab-${uid}`;
   const glow = `slots-glow-${uid}`;
 
   return (
@@ -25,10 +24,6 @@ export function SlotsIcon({ size = 40, title, ...rest }: GameIconProps) {
     >
       {title && <title>{title}</title>}
       <defs>
-        <linearGradient id={cabinet} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#2b3a4d" />
-          <stop offset="100%" stopColor="#0d1218" />
-        </linearGradient>
         <filter id={glow} x="-60%" y="-60%" width="220%" height="220%">
           <feGaussianBlur stdDeviation="1.4" result="b" />
           <feMerge>
@@ -38,7 +33,7 @@ export function SlotsIcon({ size = 40, title, ...rest }: GameIconProps) {
         </filter>
       </defs>
 
-      <rect x="4" y="7" width="40" height="34" rx="5" fill={`url(#${cabinet})`} />
+      <rect x="4" y="7" width="40" height="34" rx="5" fill="#1a2532" />
       <rect
         x="4"
         y="7"

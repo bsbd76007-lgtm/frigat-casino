@@ -3,8 +3,6 @@ import type { GameIconProps } from '@/components/icons/types';
 
 export function LimboIcon({ size = 40, title, ...rest }: GameIconProps) {
   const uid = useId().replace(/:/g, '');
-  const trail = `limbo-trail-${uid}`;
-  const orb = `limbo-orb-${uid}`;
   const glow = `limbo-glow-${uid}`;
 
   return (
@@ -19,15 +17,6 @@ export function LimboIcon({ size = 40, title, ...rest }: GameIconProps) {
     >
       {title && <title>{title}</title>}
       <defs>
-        <linearGradient id={trail} x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0%" stopColor="#d9a441" stopOpacity="0" />
-          <stop offset="100%" stopColor="#d9a441" stopOpacity=".8" />
-        </linearGradient>
-        <radialGradient id={orb} cx="40%" cy="35%" r="65%">
-          <stop offset="0%" stopColor="#fff6d8" />
-          <stop offset="45%" stopColor="#d9a441" />
-          <stop offset="100%" stopColor="#c97f12" />
-        </radialGradient>
         <filter id={glow} x="-60%" y="-60%" width="220%" height="220%">
           <feGaussianBlur stdDeviation="1.8" result="blur" />
           <feMerge>
@@ -73,14 +62,14 @@ export function LimboIcon({ size = 40, title, ...rest }: GameIconProps) {
       <path
         d="M9 37c8-2 13-8 16-15s6-11 12-14"
         fill="none"
-        stroke={`url(#${trail})`}
+        stroke="#d9a441"
         strokeWidth="2.6"
         strokeLinecap="round"
         filter={`url(#${glow})`}
       />
 
       <g filter={`url(#${glow})`}>
-        <circle cx="37" cy="8.5" r="4.6" fill={`url(#${orb})`} />
+        <circle cx="37" cy="8.5" r="4.6" fill="#d9a441" />
         <circle cx="37" cy="8.5" r="4.6" fill="none" stroke="#fff6d8" strokeWidth=".8" opacity=".6" />
       </g>
 

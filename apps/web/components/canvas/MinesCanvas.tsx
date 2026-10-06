@@ -9,7 +9,6 @@ import {
 } from '@/lib/useCanvasRenderer';
 
 import {
-  ACCENT,
   ACCENT_DEEP,
   BOARD,
   FONT,
@@ -18,9 +17,8 @@ import {
   ON_ACCENT,
   alpha,
   drawBackdrop,
+  TABLES,
   drawBox,
-  drawBoxShadow,
-  drawVignette,
   faces,
   makeScene,
   makeTileGrid,
@@ -28,6 +26,8 @@ import {
   shade,
   type Scene,
 } from './three';
+
+const THEME = TABLES.mines;
 
 export type MineTileState = 'idle' | 'safe' | 'mine' | 'hit';
 
@@ -118,7 +118,8 @@ export function MinesCanvas({
 
         const busted = hitTile !== null;
         drawBackdrop(ctx, scene, {
-          glow: busted ? NEG : ACCENT,
+          theme: THEME,
+          glow: busted ? NEG : THEME.hue,
           glowStrength: busted ? 0.13 : 0.09,
         });
 
@@ -142,8 +143,10 @@ export function MinesCanvas({
           const thickness = state === 'idle' ? from : from + (to - from) * eased;
 
           const box = grid.boxOf(tile, { thickness });
-          drawBoxShadow(ctx, scene, box, state === 'idle' ? 0.9 : 0.5);
-          drawBox(ctx, scene, box, tileFaces(state, isHovered));
+          // Idle tiles stand proud of the surface; a turned tile settles
+          // almost flush — pressed, in neumorphic terms.
+          const lift = state === 'idle' ? (isHovered ? 1.3 : 1) : 0.35;
+          drawBox(ctx, scene, box, tileFaces(state, isHovered), lift);
 
           // A hairline inset on the top face reads as a bevel and stops a run
           // of same-coloured tiles reading as one slab.
@@ -171,7 +174,6 @@ export function MinesCanvas({
           ctx.fillText('Place a bet to open the board', centre.x, centre.y);
         }
 
-        drawVignette(ctx, scene);
       },
     [columns, rows, gridSize, stateOf, hovered, interactive, hitTile, revealed.length, reducedMotion]
   );
@@ -230,7 +232,7 @@ function tileFaces(state: MineTileState, hovered: boolean) {
     case 'mine':
       return faces(shade(NEG, -0.45));
     default:
-      return faces(hovered ? BOARD.neutralLit : BOARD.neutral);
+      return faces(hovered ? shade(THEME.idle, 0.12) : THEME.idle);
   }
 }
 
@@ -303,7 +305,7 @@ function drawMine(
   const r = (box.x1 - box.x0) * 0.22 * Math.max(0.2, grow);
   const centre = scene.project(cx, cy, box.z1 + r);
   const rr = Math.max(2, r * scene.scale(cy));
-  const base = hit ? GOLD : shade(BOARD.bg, 0.3);
+  const base = hit ? GOLD : shade(THEME.surface, 0.3);
 
   if (hit) {
     ctx.beginPath();
@@ -312,24 +314,13 @@ function drawMine(
     ctx.fill();
   }
 
-  const gradient = ctx.createRadialGradient(
-    centre.x - rr * 0.35,
-    centre.y - rr * 0.4,
-    rr * 0.1,
-    centre.x,
-    centre.y,
-    rr
-  );
-  gradient.addColorStop(0, shade(base, 0.5));
-  gradient.addColorStop(0.55, base);
-  gradient.addColorStop(1, shade(base, -0.5));
   ctx.beginPath();
   ctx.arc(centre.x, centre.y, rr, 0, Math.PI * 2);
-  ctx.fillStyle = gradient;
+  ctx.fillStyle = base;
   ctx.fill();
 
   // Spikes, so a mine is still a mine without colour.
-  ctx.strokeStyle = hit ? shade(GOLD, -0.2) : shade(BOARD.neutralLit, 0.2);
+  ctx.strokeStyle = hit ? shade(GOLD, -0.2) : shade(THEME.idle, 0.25);
   ctx.lineWidth = 1.5;
   for (let i = 0; i < 6; i += 1) {
     const angle = (i / 6) * Math.PI * 2;

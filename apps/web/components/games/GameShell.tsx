@@ -37,7 +37,7 @@ export function GameShell({
   }, [socket.status]);
 
   return (
-    <section>
+    <section className="neu">
       <div className="game__head">
         <h1 className="game__title">{title}</h1>
         {subtitle && <span className="game__sub">{subtitle}</span>}

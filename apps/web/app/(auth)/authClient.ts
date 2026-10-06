@@ -23,6 +23,21 @@ interface AuthResponse {
 
 export class AuthError extends Error {}
 
+/**
+ * Thrown by a sign-in step whose credentials were right but whose account has
+ * an authenticator: no session yet, only a short-lived challenge for
+ * `verifyTotp` to finish with. Forms catch it to switch to the code step.
+ */
+export class TotpRequiredError extends AuthError {
+  constructor(readonly challenge: string) {
+    super('Enter the code from your authenticator app.');
+  }
+}
+
+function totpChallengeOf(body: Record<string, unknown>): string | null {
+  return body.requiresTotp === true && typeof body.challenge === 'string' ? body.challenge : null;
+}
+
 const FALLBACK_COPY: Record<string, string> = {
   invalid_credentials: 'That email and password combination was not recognised.',
   invalid_credentials_format:
@@ -31,6 +46,8 @@ const FALLBACK_COPY: Record<string, string> = {
   too_many_requests: 'Too many attempts. Wait a few minutes and try again.',
   invalid_code: 'That code is not valid or has expired. Request a new one.',
   invalid_code_format: 'Enter the 6-digit code from your email.',
+  invalid_totp: 'That code is not valid. Check your authenticator app and try again.',
+  challenge_expired: 'That sign-in has expired. Please start again.',
   invalid_email: 'Enter a valid email address.',
   email_unavailable:
     'Email sign-in is temporarily unavailable. Please use your password.',
@@ -100,6 +117,25 @@ export async function verifyLoginCode(
   ref?: string | null
 ): Promise<AuthedUser> {
   const { response, body } = await postJson('/api/auth/otp/verify', { email, code }, ref);
+
+  const totp = response.ok ? totpChallengeOf(body) : null;
+  if (totp) throw new TotpRequiredError(totp);
+
+  const parsed = body as AuthResponse;
+  if (!response.ok || !parsed.token || !parsed.user) {
+    throw new AuthError(messageFor(body, response.status));
+  }
+
+  await establishSession(parsed.token);
+  return parsed.user;
+}
+
+/**
+ * The last step for an account with an authenticator: the challenge from the
+ * previous step plus a 6-digit code (or a backup code) opens the session.
+ */
+export async function verifyTotp(challenge: string, code: string): Promise<AuthedUser> {
+  const { response, body } = await postJson('/api/auth/2fa/verify', { challenge, code });
 
   const parsed = body as AuthResponse;
   if (!response.ok || !parsed.token || !parsed.user) {
@@ -185,6 +221,9 @@ export async function submitPassword(
   const { response, body } = await postJson('/api/auth/login', credentials, ref);
 
   if (!response.ok) throw new AuthError(messageFor(body, response.status));
+
+  const totp = totpChallengeOf(body);
+  if (totp) throw new TotpRequiredError(totp);
 
   // The server decides which path this is. The client reads the token's
   // presence rather than trusting `requiresOtp` alone, so a malformed bypass

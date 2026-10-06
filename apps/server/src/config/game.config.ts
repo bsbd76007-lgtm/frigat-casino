@@ -50,9 +50,12 @@ export const HOUSE_EDGE: Record<GameType, number> = {
   DICE: 0.025,
   LIMBO: 0.025,
   KENO: 0.025,
-  CHICKEN: 0.025,
+  // 94% RTP: both were made deliberately harder than the 2.5% table games.
+  // Chicken's ladder and Avia's landing chance are priced off these, so the
+  // edge holds at every lane, in every mode and at every speed.
+  CHICKEN: 0.06,
   // Held by the landing chance, not a paytable — see AVIA in @frigat/shared.
-  AVIA: 0.025,
+  AVIA: 0.06,
   // Left at 4%: the brief was to make games harder, and rescaling the slots
   // paytable down to 2.5% would have *cut* the edge. Slots conventionally
   // carry more than table games, so this stays above the 2.5% floor until

@@ -28,7 +28,6 @@ function wedgePath(index: number): string {
 
 export function RouletteIcon({ size = 40, title, ...rest }: GameIconProps) {
   const uid = useId().replace(/:/g, '');
-  const hub = `roulette-hub-${uid}`;
   const glow = `roulette-glow-${uid}`;
 
   return (
@@ -43,11 +42,6 @@ export function RouletteIcon({ size = 40, title, ...rest }: GameIconProps) {
     >
       {title && <title>{title}</title>}
       <defs>
-        <radialGradient id={hub} cx="38%" cy="32%" r="70%">
-          <stop offset="0%" stopColor="#7fb8a6" />
-          <stop offset="55%" stopColor="#e0b055" />
-          <stop offset="100%" stopColor="#126b56" />
-        </radialGradient>
         <filter id={glow} x="-40%" y="-40%" width="180%" height="180%">
           <feGaussianBlur stdDeviation="1.4" result="blur" />
           <feMerge>
@@ -94,7 +88,7 @@ export function RouletteIcon({ size = 40, title, ...rest }: GameIconProps) {
         <path d={`M${CENTER - INNER + 1.5} ${CENTER}H${CENTER + INNER - 1.5}`} />
       </g>
 
-      <circle cx={CENTER} cy={CENTER} r="4.2" fill={`url(#${hub})`} />
+      <circle cx={CENTER} cy={CENTER} r="4.2" fill="#e0b055" />
       <circle cx={CENTER} cy={CENTER} r="1.5" fill="#0a0f14" opacity=".6" />
 
       {/* The ball, parked in the pocket at roughly one o'clock. */}

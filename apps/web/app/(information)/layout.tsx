@@ -46,7 +46,7 @@ const CSS = `
    one site. */
 .infobar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center;
   gap: 16px; flex-wrap: wrap; padding: 10px 12px;
-  background: var(--fg-grain), var(--fg-plate), var(--fg-header);
+  background: var(--fg-header);
   border-bottom: 1px solid var(--fg-line); backdrop-filter: blur(8px); }
 .infobar__brand { display: inline-flex; align-items: center; flex: none;
   font-size: 17px; font-weight: 900; letter-spacing: -.02em; color: var(--fg-text); }

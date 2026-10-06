@@ -15,7 +15,6 @@ import {
 } from '@/lib/useCanvasRenderer';
 
 import {
-  ACCENT,
   BOARD,
   FONT,
   GOLD,
@@ -23,12 +22,6 @@ import {
   NEG,
   POS,
   alpha,
-  drawBackdrop,
-  drawVignette,
-  makeScene,
-  poly,
-  shade,
-  type ScreenPoint,
 } from './three';
 
 export const WHEEL_ORDER = ROULETTE_WHEEL_ORDER;
@@ -52,14 +45,21 @@ export interface RouletteCanvasProps {
  * wheel — but the win trim is the shared gold and the cloth is the board floor,
  * so the bowl sits on the same table as every other game.
  */
+
 const WHEEL = {
   red: '#c8384a',
-  black: '#191920',
+  black: '#1c1f26',
   green: POS,
-  frame: '#2c2c33',
-  frameLit: '#3d3d47',
+  /** The table's own green-slate, turned into a wooden-dark rim. */
+  frame: '#3a2a20',
+  frameLit: '#5a4232',
+  track: '#2b3a34',
+  cone: '#24302b',
+  coneLit: '#30403a',
+  gold: '#c9a24a',
+  number: '#f4f4f7',
   ball: '#f4f4f7',
-  separator: '#09090b',
+  separator: '#c9a24a',
 } as const;
 
 export const SEGMENT = (Math.PI * 2) / WHEEL_ORDER.length;
@@ -67,8 +67,6 @@ export const MARKER_ANGLE = -Math.PI / 2;
 const IDLE_RATE = 0.00022;
 const BALL_ORBITS = 6;
 const WHEEL_SPINS = 4;
-/** Steps a pocket's arc is chopped into; a wedge is too wide to draw straight. */
-const ARC_STEPS = 4;
 
 export function wheelAngleForPocket(
   pocket: number,
@@ -146,36 +144,20 @@ export function RouletteCanvas({
   const draw = useMemo(
     () =>
       ({ ctx, width, height, time }: CanvasFrame) => {
-        // depthStretch is what sets the tilt: the wheel's diameter has to take
-        // up well under the scene's full depth range, or the far rim climbs off
-        // the top of the stage and the bowl reads as a tube.
-        const scene = makeScene(width, height, {
-          top: 0.2,
-          bottom: 0.99,
-          focus: 0.55,
-          far: 3,
-          depthStretch: 1.5,
-        });
-
-        const outer = Math.min(width * 0.46, height * 0.86);
+        // A flat, top-down wheel. Sized off the shorter side so it is always a
+        // circle with room above it for the status pill and the marker.
+        const outer = Math.min(width, height) * 0.42;
         if (outer <= 12) return;
 
         const cx = width / 2;
-        const cy = 0.55;
+        const cy = height * 0.55;
 
-        /** Wheel space: radius and angle about the spindle, plus a height. */
-        const P = (r: number, theta: number, z = 0): ScreenPoint =>
-          scene.project(cx + r * Math.cos(theta), cy + (r * Math.sin(theta)) / scene.depthPx, z);
-
-        const rimOuter = outer;
-        const rimInner = outer * 0.86;
-        const pocketOuter = rimInner;
-        const pocketInner = outer * 0.56;
-        const hub = outer * 0.36;
-        const trackRadius = outer * 0.93;
+        const rimInner = outer * 0.9;
+        const trackRadius = outer * 0.84;
+        const pocketOuter = outer * 0.76;
+        const pocketInner = outer * 0.5;
+        const hub = outer * 0.34;
         const restRadius = (pocketOuter + pocketInner) / 2;
-        const wallH = outer * 0.13;
-        const pocketZ = outer * 0.02;
 
         const now = performance.now();
         const delta = lastTimeRef.current === null ? 0 : now - lastTimeRef.current;
@@ -202,138 +184,103 @@ export function RouletteCanvas({
         }
 
         const winning = landing && progress >= 1 ? landing.pocket : null;
-        drawBackdrop(ctx, scene, {
-          y0: 0.02,
-          y1: 0.99,
-          glow: winning !== null ? GOLD : ACCENT,
-          glowStrength: winning !== null ? 0.13 : 0.08,
+
+        // No table fill: the canvas is transparent, so the wheel sits straight
+        // on the board area instead of on a square of its own.
+        ctx.clearRect(0, 0, width, height);
+
+        // Frame: an outer wooden-dark rim, then the ball track inside it.
+        disc(ctx, cx, cy, outer, WHEEL.frame);
+        disc(ctx, cx, cy, rimInner, WHEEL.track);
+        ring(ctx, cx, cy, rimInner, WHEEL.frameLit, Math.max(1, outer * 0.012));
+
+        // Pockets.
+        const numberSize = Math.max(8, outer * 0.075);
+        WHEEL_ORDER.forEach((value, index) => {
+          const start = wheelAngle + index * SEGMENT;
+          const colour = pocketColor(value);
+          const fill =
+            colour === 'GREEN' ? WHEEL.green : colour === 'RED' ? WHEEL.red : WHEEL.black;
+          wedge(ctx, cx, cy, pocketInner, pocketOuter, start, SEGMENT, fill);
+          if (winning === value) {
+            const pulse = reducedMotion ? 0.7 : 0.55 + Math.sin(time / 160) * 0.35;
+            wedge(ctx, cx, cy, pocketInner, pocketOuter, start, SEGMENT, alpha(GOLD, 0.45 * pulse));
+            ctx.strokeStyle = GOLD;
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+          }
+          // Upright along the radius, like a real wheel's numerals.
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(start + SEGMENT / 2 + Math.PI / 2);
+          ctx.fillStyle = winning === value ? '#2a1a03' : WHEEL.number;
+          ctx.font = `800 ${numberSize}px ${FONT.num}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(value), 0, -(pocketOuter - numberSize * 0.95));
+          ctx.restore();
         });
 
-        // The bowl: its outer lip, then the well the pockets sit in.
-        ringFill(ctx, P, rimOuter, wallH, shade(WHEEL.frame, -0.35));
-        ringFill(ctx, P, rimInner, pocketZ, shade(WHEEL.frame, -0.6));
-
-        // Back wall first, so the pockets paint over it.
-        wallStrip(ctx, P, rimOuter, wallH, 'far', shade(WHEEL.frame, -0.15));
-
-        // Pockets, far ones first: the near rim has to overlap them, and within
-        // the ring a nearer separator should cover the one behind it.
-        const seats = WHEEL_ORDER.map((value, index) => {
-          const start = wheelAngle + index * SEGMENT;
-          const mid = start + SEGMENT / 2;
-          return { value, index, start, mid, depth: Math.sin(mid) };
-        }).sort((a, b) => a.depth - b.depth);
-
-        const numberSize = Math.max(7, outer * 0.062);
-        for (const seat of seats) {
-          const colour = pocketColor(seat.value);
-          const base =
-            colour === 'GREEN' ? WHEEL.green : colour === 'RED' ? WHEEL.red : WHEEL.black;
-          // The far half of the wheel is turned away from the light.
-          const lit = shade(base, 0.1 - Math.max(0, -seat.depth) * 0.22);
-
-          const wedge = wedgePath(P, pocketInner, pocketOuter, seat.start, SEGMENT, pocketZ);
-          poly(ctx, wedge, lit);
+        // Pocket separators and the rings either side of the pockets.
+        ctx.strokeStyle = WHEEL.separator;
+        ctx.lineWidth = Math.max(1, outer * 0.008);
+        for (let index = 0; index < WHEEL_ORDER.length; index += 1) {
+          const a = wheelAngle + index * SEGMENT;
           ctx.beginPath();
-          ctx.moveTo(wedge[0].x, wedge[0].y);
-          for (let i = 1; i < wedge.length; i += 1) ctx.lineTo(wedge[i].x, wedge[i].y);
-          ctx.closePath();
-          ctx.strokeStyle = WHEEL.separator;
-          ctx.lineWidth = 0.8;
+          ctx.moveTo(cx + Math.cos(a) * pocketInner, cy + Math.sin(a) * pocketInner);
+          ctx.lineTo(cx + Math.cos(a) * pocketOuter, cy + Math.sin(a) * pocketOuter);
           ctx.stroke();
-
-          if (winning === seat.value) {
-            const pulse = reducedMotion ? 0.7 : 0.55 + Math.sin(time / 160) * 0.35;
-            poly(ctx, wedge, alpha(GOLD, 0.3 * pulse));
-            ctx.strokeStyle = GOLD;
-            ctx.lineWidth = 2.2;
-            ctx.shadowColor = GOLD;
-            ctx.shadowBlur = 16;
-            ctx.stroke();
-            ctx.shadowBlur = 0;
-          }
-
-          drawPocketNumber(ctx, P, seat.mid, pocketInner, pocketOuter, pocketZ, String(seat.value), {
-            size: numberSize,
-            fill: winning === seat.value ? '#3a2a08' : BOARD.text,
-          });
         }
+        ring(ctx, cx, cy, pocketOuter, WHEEL.gold, Math.max(1.5, outer * 0.014));
+        ring(ctx, cx, cy, pocketInner, WHEEL.gold, Math.max(1.5, outer * 0.014));
 
-        // The cone over the spindle, standing proud of the pocket ring.
-        const hubTop = P(0, 0, pocketZ + outer * 0.16);
-        const hubRing = arc(P, hub, 0, Math.PI * 2, 48, pocketZ);
-        poly(ctx, hubRing, shade(WHEEL.frame, -0.3));
-        for (let i = 0; i < hubRing.length; i += 1) {
-          const a = hubRing[i];
-          const b = hubRing[(i + 1) % hubRing.length];
-          const theta = (i / hubRing.length) * Math.PI * 2;
-          // Lit on the left, like every other solid on the table.
-          poly(ctx, [a, b, hubTop], shade(WHEEL.frameLit, -0.2 + Math.cos(theta) * -0.22));
+        // Centre: a flat turret with four spokes that turn with the wheel.
+        disc(ctx, cx, cy, pocketInner - outer * 0.01, WHEEL.cone);
+        disc(ctx, cx, cy, hub, WHEEL.coneLit);
+        ctx.strokeStyle = WHEEL.gold;
+        ctx.lineWidth = Math.max(2, outer * 0.03);
+        ctx.lineCap = 'round';
+        for (let k = 0; k < 4; k += 1) {
+          const a = wheelAngle + (k * Math.PI) / 2;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a) * hub * 0.25, cy + Math.sin(a) * hub * 0.25);
+          ctx.lineTo(cx + Math.cos(a) * hub * 0.9, cy + Math.sin(a) * hub * 0.9);
+          ctx.stroke();
         }
+        disc(ctx, cx, cy, hub * 0.24, WHEEL.gold);
 
+        // Ball: runs the track, then drops into the pocket as it slows.
         if (landing) {
           const eased = easeOutQuart(progress);
           const ballAngle = landing.ballFrom + (landing.ballTo - landing.ballFrom) * eased;
           const fall = smoothstep((progress - 0.45) / 0.55);
-          const radius = trackRadius + (restRadius - trackRadius) * fall;
-          const hop =
+          const bounce =
             progress > 0.45 && progress < 0.98 && !reducedMotion
-              ? Math.abs(Math.sin(progress * 26)) * (1 - fall) * outer * 0.05
+              ? Math.abs(Math.sin(progress * 26)) * (1 - fall) * outer * 0.03
               : 0;
-          // The ball runs the rim high and drops into the well as it slows.
-          const ballZ = pocketZ + wallH * (1 - fall) * 0.85 + hop;
-          const ballR = Math.max(3, outer * 0.035);
-
-          const at = P(radius, ballAngle, ballZ);
-          const s = scene.scale(cy + (radius * Math.sin(ballAngle)) / scene.depthPx);
-          const rr = Math.max(2, ballR * s);
-
-          const shadowAt = P(radius, ballAngle, pocketZ);
-          ctx.beginPath();
-          ctx.ellipse(shadowAt.x, shadowAt.y, rr * 1.1, rr * 0.45, 0, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(5,5,6,.45)';
-          ctx.fill();
-
-          const shine = ctx.createRadialGradient(
-            at.x - rr * 0.35,
-            at.y - rr * 0.4,
-            rr * 0.1,
-            at.x,
-            at.y,
-            rr
-          );
-          shine.addColorStop(0, '#ffffff');
-          shine.addColorStop(0.6, WHEEL.ball);
-          shine.addColorStop(1, '#9a9aa6');
-          ctx.beginPath();
-          ctx.arc(at.x, at.y, rr, 0, Math.PI * 2);
-          ctx.fillStyle = shine;
-          ctx.fill();
+          const radius = trackRadius + (restRadius - trackRadius) * fall + bounce;
+          const rr = Math.max(3, outer * 0.04);
+          const bx = cx + Math.cos(ballAngle) * radius;
+          const by = cy + Math.sin(ballAngle) * radius;
+          disc(ctx, bx + rr * 0.25, by + rr * 0.3, rr, 'rgba(0,0,0,.35)');
+          disc(ctx, bx, by, rr, WHEEL.ball);
         }
 
-        // Near wall last: in a bowl seen at an angle it stands in front of the
-        // pockets nearest the camera.
-        wallStrip(ctx, P, rimOuter, wallH, 'near', WHEEL.frameLit);
-
-        // The marker, a post at the far lip where the winning pocket comes to.
-        const markerBase = P(rimOuter, MARKER_ANGLE, wallH);
-        const markerTip = P(rimOuter, MARKER_ANGLE, wallH + outer * 0.1);
-        poly(
-          ctx,
-          [
-            { x: markerBase.x - outer * 0.035, y: markerBase.y },
-            { x: markerBase.x + outer * 0.035, y: markerBase.y },
-            markerTip,
-          ],
-          GOLD
-        );
+        // Marker at the top, pointing at the pocket that wins.
+        ctx.beginPath();
+        ctx.moveTo(cx - outer * 0.05, cy - outer - outer * 0.07);
+        ctx.lineTo(cx + outer * 0.05, cy - outer - outer * 0.07);
+        ctx.lineTo(cx, cy - outer + outer * 0.04);
+        ctx.closePath();
+        ctx.fillStyle = GOLD;
+        ctx.fill();
 
         // A compact status line above the bowl. The page already prints the full
         // result under the canvas, so repeating it large here would only crowd
         // the far rim — the wheel's own gold pocket and marker say which one won.
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        const readoutY = height * 0.08;
+        const readoutY = Math.max(14, (cy - outer - outer * 0.07) / 2);
         if (winning !== null) {
           const colour = pocketColor(winning);
           const text = `${winning} ${colour}`;
@@ -355,7 +302,6 @@ export function RouletteCanvas({
           ctx.fillText(phase === 'SPINNING' ? 'SPINNING' : 'PLACE BETS', width / 2, readoutY);
         }
 
-        drawVignette(ctx, scene);
       },
     [phase, duration, reducedMotion]
   );
@@ -376,10 +322,9 @@ export function RouletteCanvas({
       style={{
         display: 'block',
         width: '100%',
-        // Wider than tall now: a wheel lying on the table is an ellipse, and a
-        // square frame around one is mostly empty cloth.
-        maxWidth: size * 1.3,
-        aspectRatio: '4 / 3',
+        // Square: the wheel is drawn flat and top-down, so it is a circle.
+        maxWidth: size * 1.2,
+        aspectRatio: '1 / 1',
         margin: '0 auto',
       }}
       role="img"
@@ -387,8 +332,6 @@ export function RouletteCanvas({
     />
   );
 }
-
-type Project = (r: number, theta: number, z?: number) => ScreenPoint;
 
 /** The status pill behind the result. Left as a live path so it can be stroked. */
 function roundedPill(
@@ -411,109 +354,45 @@ function roundedPill(
   ctx.fill();
 }
 
-/** Points along an arc in wheel space. */
-function arc(
-  P: Project,
-  radius: number,
-  from: number,
-  sweep: number,
-  steps: number,
-  z: number
-): ScreenPoint[] {
-  const points: ScreenPoint[] = [];
-  for (let i = 0; i <= steps; i += 1) {
-    points.push(P(radius, from + (sweep * i) / steps, z));
-  }
-  return points;
+function disc(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, fill: string): void {
+  ctx.beginPath();
+  ctx.arc(x, y, Math.max(0, r), 0, Math.PI * 2);
+  ctx.fillStyle = fill;
+  ctx.fill();
 }
 
-/** A filled disc at one height — the bowl's lip and its well. */
-function ringFill(
+function ring(
   ctx: CanvasRenderingContext2D,
-  P: Project,
-  radius: number,
-  z: number,
+  x: number,
+  y: number,
+  r: number,
+  stroke: string,
+  lineWidth: number
+): void {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
+}
+
+/** One pocket: the annular sector between two radii. Left as the live path. */
+function wedge(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  inner: number,
+  outer: number,
+  from: number,
+  sweep: number,
   fill: string
 ): void {
-  poly(ctx, arc(P, radius, 0, Math.PI * 2, 56, z), fill);
-}
-
-/** One pocket: an arc at each radius, joined into a wedge. */
-function wedgePath(
-  P: Project,
-  inner: number,
-  outer: number,
-  from: number,
-  sweep: number,
-  z: number
-): ScreenPoint[] {
-  return [
-    ...arc(P, outer, from, sweep, ARC_STEPS, z),
-    ...arc(P, inner, from + sweep, -sweep, ARC_STEPS, z),
-  ];
-}
-
-/**
- * The inside of the bowl wall, on one half of the rim. Drawn as two strips so
- * the far half can go behind the pockets and the near half in front of them —
- * the cheapest thing that reads as a bowl rather than a printed disc.
- */
-function wallStrip(
-  ctx: CanvasRenderingContext2D,
-  P: Project,
-  radius: number,
-  wallH: number,
-  half: 'near' | 'far',
-  base: string
-): void {
-  const steps = 40;
-  const from = half === 'near' ? 0 : Math.PI;
-  const top = arc(P, radius, from, Math.PI, steps, wallH);
-  const bottom = arc(P, radius, from + Math.PI, -Math.PI, steps, 0);
-  const gradient = ctx.createLinearGradient(top[0].x, 0, top[top.length - 1].x, 0);
-  gradient.addColorStop(0, shade(base, 0.12));
-  gradient.addColorStop(0.5, base);
-  gradient.addColorStop(1, shade(base, -0.3));
-  poly(ctx, [...top, ...bottom], gradient);
-}
-
-/**
- * A pocket's number, sheared into the ring. The pocket's tangent and its radius
- * give the two screen axes to shear along, the same affine approximation the
- * shared kit uses for box faces.
- */
-function drawPocketNumber(
-  ctx: CanvasRenderingContext2D,
-  P: Project,
-  mid: number,
-  inner: number,
-  outer: number,
-  z: number,
-  text: string,
-  options: { size: number; fill: string }
-): void {
-  const midRadius = (inner + outer) / 2;
-  const span = SEGMENT * 0.42;
-  const centre = P(midRadius, mid, z);
-  const along = P(midRadius, mid + span, z);
-  const outward = P(outer, mid, z);
-
-  const ax = along.x - centre.x;
-  const ay = along.y - centre.y;
-  const bx = outward.x - centre.x;
-  const by = outward.y - centre.y;
-  const aLen = Math.hypot(ax, ay);
-  const bLen = Math.hypot(bx, by);
-  if (aLen < 0.4 || bLen < 0.4) return;
-
-  ctx.save();
-  ctx.transform(bx / bLen, by / bLen, ax / aLen, ay / aLen, centre.x, centre.y);
-  ctx.fillStyle = options.fill;
-  ctx.font = `700 ${options.size}px ${FONT.num}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, 0, 0);
-  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(x, y, outer, from, from + sweep);
+  ctx.arc(x, y, inner, from + sweep, from, true);
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
 }
 
 export default RouletteCanvas;

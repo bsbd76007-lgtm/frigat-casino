@@ -43,9 +43,7 @@ const CSS = `
   text-transform: uppercase; color: var(--fg-dim); }
 .fg-hist__scroll { position: relative; flex: 1 1 auto; min-width: 0; display: flex;
   gap: 6px; overflow-x: auto; padding: 2px 0; scrollbar-width: none;
-  -ms-overflow-style: none; scroll-behavior: smooth;
-  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%);
-  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%); }
+  -ms-overflow-style: none; scroll-behavior: smooth; }
 .fg-hist__scroll::-webkit-scrollbar { display: none; }
 .fg-hist__badge { flex: 0 0 auto; padding: 4px 10px; font-size: 12.5px; font-weight: 700;
   font-variant-numeric: tabular-nums; line-height: 1.25; white-space: nowrap;

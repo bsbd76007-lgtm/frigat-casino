@@ -31,14 +31,14 @@ describe('integration harness', () => {
     // Deliberately not "the database is empty": test files share one scratch
     // database, so that assertion passed only when this file ran first and
     // failed the moment another suite seeded a row. It tested ordering, not
-    // behaviour.
-    const before = await prisma.user.count();
+    // behaviour. The same goes for a total row count: other files create
+    // users in parallel, so this checks its own row, not the table's size.
     const created = await prisma.user.create({
       data: { email: `smoke-${Date.now()}@test.local`, passwordHash: 'x' },
       select: { id: true },
     });
-    expect(await prisma.user.count()).toBe(before + 1);
+    expect(await prisma.user.findUnique({ where: { id: created.id } })).not.toBeNull();
     await prisma.user.delete({ where: { id: created.id } });
-    expect(await prisma.user.count()).toBe(before);
+    expect(await prisma.user.findUnique({ where: { id: created.id } })).toBeNull();
   });
 });

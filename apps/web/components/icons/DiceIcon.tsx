@@ -18,9 +18,6 @@ const RIGHT_PIPS = [
 
 export function DiceIcon({ size = 40, title, ...rest }: GameIconProps) {
   const uid = useId().replace(/:/g, '');
-  const top = `dice-top-${uid}`;
-  const left = `dice-left-${uid}`;
-  const right = `dice-right-${uid}`;
   const glow = `dice-glow-${uid}`;
 
   return (
@@ -35,18 +32,6 @@ export function DiceIcon({ size = 40, title, ...rest }: GameIconProps) {
     >
       {title && <title>{title}</title>}
       <defs>
-        <linearGradient id={top} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="100%" stopColor="#cbd8e4" />
-        </linearGradient>
-        <linearGradient id={left} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#9fb0c2" />
-          <stop offset="100%" stopColor="#67788b" />
-        </linearGradient>
-        <linearGradient id={right} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#c6d3e0" />
-          <stop offset="100%" stopColor="#8b9bad" />
-        </linearGradient>
         <filter id={glow} x="-40%" y="-40%" width="180%" height="180%">
           <feGaussianBlur stdDeviation="1.6" result="blur" />
           <feMerge>
@@ -60,9 +45,9 @@ export function DiceIcon({ size = 40, title, ...rest }: GameIconProps) {
       <ellipse cx="24" cy="39.5" rx="13" ry="3.4" fill="#e0b055" opacity=".18" filter={`url(#${glow})`} />
 
       <g stroke="#0a0f14" strokeWidth="1.1" strokeLinejoin="round">
-        <polygon points={LEFT} fill={`url(#${left})`} />
-        <polygon points={RIGHT} fill={`url(#${right})`} />
-        <polygon points={TOP} fill={`url(#${top})`} />
+        <polygon points={LEFT} fill="#7f90a3" />
+        <polygon points={RIGHT} fill="#a9b8c7" />
+        <polygon points={TOP} fill="#f2f6fa" />
       </g>
 
       {TOP_PIPS.map((pip) => (

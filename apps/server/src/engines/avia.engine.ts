@@ -2,34 +2,45 @@
  * FRIGAT — Avia Masters Engine
  *
  * One bet is one flight, decided whole before the client draws a frame. The
- * player launches and watches; there is no input mid-air.
+ * player picks a speed, optionally buys a safe landing, launches and watches;
+ * there is no input mid-air.
  *
  * Draws come from the round's provable float stream (see `provable.ts`):
  *
  *     cursor 0          landing draw — the flight lands when it is < P(land)
- *     cursor 1          flight length, uniform over AVIA.flightEvents
- *     cursor 2 + 2i     kind of event i, weighted by AVIA.events
+ *     cursor 1          flight length, uniform over the mode's flightEvents
+ *     cursor 2 + 2i     kind of event i, weighted by the mode's table
  *     cursor 3 + 2i     altitude of event i, in [0, 1) — trajectory only
+ *     cursor SPOT       which landing spot, weighted by AVIA.spots
  *
- * Each event applies m ← m · mul + add, starting from m = 1. Because the kind
- * of every event is independent of the multiplier it lands on, the expectation
- * is exact by linearity:
+ * The tables and every price — E[M], E[spot], P(land), the safe-landing stake
+ * cap — live in @frigat/shared, so the web verifier replays the same maths
+ * from the same code. See AVIA there for why the edge holds in every mode.
  *
- *     E[m_{i+1}] = E[mul] · E[m_i] + E[add]
- *
- * and averaging over the flight length gives E[M]. The landing draw is then
- * priced so that P(land) · E[M] = 1 - houseEdge. Flooring to 2 dp and the
- * AVIA.maxMultiplier cap only ever lower a payout, so the RTP sits at or just
- * under target — never over.
+ * A safe landing skips the landing draw (the flight lands whatever cursor 0
+ * says) but changes nothing else: the same seed gives the same events and the
+ * same spot, so a safe round is replayable exactly like an ordinary one.
  */
 
-import { AVIA, type AviaEventKind } from '@frigat/shared';
+import {
+  AVIA,
+  AVIA_SPOT_CURSOR,
+  aviaEventTable,
+  aviaLandingChance,
+  aviaPick,
+  aviaSafeLandingMaxStake,
+  isAviaMode,
+  type AviaEventKind,
+  type AviaMode,
+  type AviaSpotId,
+} from '@frigat/shared';
 import { HOUSE_EDGE } from '../config/game.config';
 import { floatAt } from './provable';
 import type { EngineResult, SeedContext } from '../types/engine.types';
 
 const EDGE = HOUSE_EDGE.AVIA;
-const WEIGHT_TOTAL = AVIA.events.reduce((sum, e) => sum + e.weight, 0);
+
+export { isAviaMode };
 
 export interface AviaEvent {
   kind: AviaEventKind;
@@ -40,54 +51,45 @@ export interface AviaEvent {
 }
 
 export interface AviaFlight {
+  mode: AviaMode;
   landed: boolean;
+  /** True when the landing was bought rather than drawn. */
+  safe: boolean;
+  /** Where the flight came down; null when it ditched. */
+  spot: AviaSpotId | null;
+  spotMultiplier: number;
   events: AviaEvent[];
   /** What the flight collected, whether or not it landed. */
   flightMultiplier: number;
+  /** What a landing pays: the flight times the spot's bonus. 0 on a ditch. */
+  payoutMultiplier: number;
 }
 
-/** E[M] over the whole flight — exact, from the table alone. */
-export function expectedMultiplier(): number {
-  const meanMul = AVIA.events.reduce((s, e) => s + e.weight * e.mul, 0) / WEIGHT_TOTAL;
-  const meanAdd = AVIA.events.reduce((s, e) => s + e.weight * e.add, 0) / WEIGHT_TOTAL;
-  const { min, max } = AVIA.flightEvents;
-  let total = 0;
-  for (let n = min; n <= max; n += 1) {
-    let m = 1;
-    for (let i = 0; i < n; i += 1) m = meanMul * m + meanAdd;
-    total += m;
-  }
-  return total / (max - min + 1);
+/** The chance a flight in `mode` lands, priced so the round returns 1 - edge. */
+export function landingChance(mode: AviaMode): number {
+  return aviaLandingChance(mode, EDGE);
 }
 
-/** The chance a flight lands, priced so the round returns 1 - edge. */
-export function landingChance(): number {
-  return (1 - EDGE) / expectedMultiplier();
-}
-
-function eventAt(u: number): (typeof AVIA.events)[number] {
-  let roll = u * WEIGHT_TOTAL;
-  for (const event of AVIA.events) {
-    roll -= event.weight;
-    if (roll < 0) return event;
-  }
-  return AVIA.events[AVIA.events.length - 1];
+/** The largest stake a safe landing may cover in `mode`. */
+export function safeLandingMaxStake(mode: AviaMode): number {
+  return aviaSafeLandingMaxStake(mode, EDGE);
 }
 
 const floor2 = (m: number) => Math.floor(m * 100) / 100;
 
-export function fly(seed: SeedContext): AviaFlight {
+export function fly(seed: SeedContext, mode: AviaMode = 'fast', safe = false): AviaFlight {
   const draw = (cursor: number) =>
     floatAt(seed.serverSeed, seed.clientSeed, seed.nonce, cursor);
 
-  const landed = draw(0) < landingChance();
-  const { min, max } = AVIA.flightEvents;
+  const table = aviaEventTable(mode);
+  const landed = safe || draw(0) < landingChance(mode);
+  const { min, max } = AVIA.modes[mode].flightEvents;
   const length = min + Math.floor(draw(1) * (max - min + 1));
 
   let m = 1;
   const events: AviaEvent[] = [];
   for (let i = 0; i < length; i += 1) {
-    const spec = eventAt(draw(2 + 2 * i));
+    const spec = aviaPick(table, draw(2 + 2 * i));
     m = m * spec.mul + spec.add;
     events.push({
       kind: spec.kind,
@@ -96,17 +98,38 @@ export function fly(seed: SeedContext): AviaFlight {
     });
   }
 
-  return { landed, events, flightMultiplier: floor2(Math.min(m, AVIA.maxMultiplier)) };
+  const flightMultiplier = floor2(Math.min(m, AVIA.maxMultiplier));
+  const spot = landed ? aviaPick(AVIA.spots, draw(AVIA_SPOT_CURSOR)) : null;
+  const spotMultiplier = spot?.mul ?? 0;
+  const payoutMultiplier = landed
+    ? floor2(Math.min(flightMultiplier * spotMultiplier, AVIA.maxMultiplier))
+    : 0;
+
+  return {
+    mode,
+    landed,
+    safe,
+    spot: spot?.id ?? null,
+    spotMultiplier,
+    events,
+    flightMultiplier,
+    payoutMultiplier,
+  };
 }
 
-/** Instant-engine entry point. There are no parameters: the stake is the bet. */
-export function play(_params: Record<string, unknown>, seed: SeedContext): EngineResult {
-  const flight = fly(seed);
+/**
+ * Instant-engine entry point. `mode` picks the speed; `safe` is honoured only
+ * when the socket handler has already charged the fee and checked the stake
+ * cap — see handleInstantBet.
+ */
+export function play(params: Record<string, unknown>, seed: SeedContext): EngineResult {
+  const mode: AviaMode = isAviaMode(params.mode) ? params.mode : 'fast';
+  const flight = fly(seed, mode, params.safe === true);
   return {
     win: flight.landed,
-    // A landing pays what the flight collected — below 1x after enough rockets,
-    // which is a partial return, not a loss. A ditch pays nothing.
-    multiplier: flight.landed ? flight.flightMultiplier : 0,
+    // A landing pays what the flight collected times the spot — below 1x after
+    // enough bombs, which is a partial return, not a loss. A ditch pays nothing.
+    multiplier: flight.payoutMultiplier,
     resultData: { ...flight },
   };
 }

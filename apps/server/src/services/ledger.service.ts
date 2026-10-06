@@ -14,9 +14,9 @@
 
 import { Prisma, TransactionType } from '@prisma/client';
 import { prisma } from '../config/prisma';
-import { recordPlay } from './streak.service';
 import { auditWithin } from './audit.service';
 import { assertWagerAllowed } from './riskConfig.service';
+import { HOUSE_EDGE } from '../config/game.config';
 
 const D = Prisma.Decimal;
 
@@ -126,21 +126,6 @@ export async function processBet(
       balance: updated.balance.toString(),
     };
   });
-
-  // Streak is recorded after the debit commits, and only for real wagers.
-  // STREAK_RESTORE routes through this same gate so it inherits the freeze and
-  // funds checks — but paying to restore a streak is not playing, and counting
-  // it would let a player buy a streak day outright.
-  //
-  // Deliberately not awaited into the caller's path: the stake is already
-  // taken and the round is live, so a streak bookkeeping failure must not
-  // surface as a failed bet. It is idempotent per day, so a lost update
-  // self-corrects on the player's next wager.
-  if (input.gameType !== 'STREAK_RESTORE') {
-    void recordPlay(input.userId).catch(() => {
-  /* no-op */
-    });
-  }
 
   return result;
 }
@@ -283,47 +268,6 @@ export interface TransferBetweenUsersResult {
   toBalance: string;
 }
 
-export async function creditCashback(
-  input: AwardBonusInput
-): Promise<AwardBonusResult> {
-  const currency = input.currency ?? 'USD';
-  const amount = toAmount(input.amount, 'cashback amount');
-
-  return prisma.$transaction(async (tx) => {
-    const wallet = await tx.wallet.upsert({
-      where: { userId_currency: { userId: input.userId, currency } },
-      update: {},
-      create: { userId: input.userId, currency, balance: new D(0) },
-      select: { id: true },
-    });
-
-    const updated = await tx.wallet.update({
-      where: { id: wallet.id },
-      data: { balance: { increment: amount } },
-      select: { balance: true },
-    });
-
-    const row = await tx.transaction.create({
-      data: {
-        walletId: wallet.id,
-        type: TransactionType.BONUS_CASHBACK,
-        amount,
-        status: 'COMPLETED',
-        // Day-scoped, NOT Date.now(). Transaction.txHash is @unique, so this
-        // key is what makes one cashback per UTC day a database invariant
-        // rather than a check-then-act. With a millisecond key, ten concurrent
-        // claims each read "not claimed yet" and each credited in full — a
-        // $500 entitlement paid $5,000. The unique violation now makes the
-        // second writer lose, whatever the interleaving.
-        txHash: `cashback:${input.userId}:${new Date().toISOString().slice(0, 10)}`,
-      },
-      select: { id: true },
-    });
-
-    return { transactionId: row.id, balance: updated.balance.toFixed(8) };
-  });
-}
-
 export async function transferBetweenUsers(
   input: TransferBetweenUsersInput
 ): Promise<TransferBetweenUsersResult> {
@@ -406,12 +350,15 @@ export async function transferBetweenUsers(
 }
 
 export interface SettleAffiliateRewardInput {
+  /** The game the bet was on — its house edge is what the commission is cut from. */
+  gameType: string;
   userId: string;
   /** Originating BET transaction id — the idempotency key for this reward. */
   betId: string;
   /** Stake that was debited, decimal string. */
   stake: string;
-  /** Amount credited back, decimal string. Omit or '0' for a total loss. */
+  /** Amount credited back. Accepted for the call sites' convenience; no longer
+   *  used — see settleAffiliateReward for why commission ignores the result. */
   payout?: string;
   currency?: string;
 }
@@ -441,17 +388,26 @@ export interface AffiliateRewardResult {
  * is minted against the house the same way a WIN is, and lands in the
  * referrer's `affiliateBalance` rather than their wagerable `balance`.
  */
+/** The house edge commission is cut from. Roulette's is structural (1/37). */
+function affiliateEdge(gameType: string): Prisma.Decimal {
+  if (gameType === 'ROULETTE') return new D(1).dividedBy(37);
+  const edge = (HOUSE_EDGE as Record<string, number>)[gameType];
+  return new D(typeof edge === 'number' && edge > 0 ? edge : 0);
+}
+
 export async function settleAffiliateReward(
   input: SettleAffiliateRewardInput
 ): Promise<AffiliateRewardResult | null> {
   const currency = input.currency ?? 'USD';
   const stake = toAmount(input.stake, 'stake');
-  const payout = input.payout ? new D(input.payout) : new D(0);
-  if (!payout.isFinite() || payout.lessThan(0)) {
-    throw new Error('ledger: payout must be a non-negative finite number');
-  }
 
-  const netLoss = stake.minus(payout);
+  // Commission is cut from what the house *expects* to keep on the bet —
+  // stake × that game's edge — not from the player's loss on it. Paying a share
+  // of every losing bet, with no credit back for the winning ones, paid a
+  // referrer far more than the house earned: on a 50/50 game it came to about
+  // 12.5% of turnover against a 2.5% edge. Off the edge, a referrer can only
+  // ever receive a slice of real house revenue.
+  const netLoss = stake.mul(affiliateEdge(input.gameType));
   if (netLoss.lessThanOrEqualTo(0)) return null;
 
   const idempotencyKey = `affiliate:${input.betId}`;

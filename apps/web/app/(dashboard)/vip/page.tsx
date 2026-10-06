@@ -21,13 +21,14 @@ interface VipStatus {
   currency: string;
 }
 
+/** Mirrors VIP_TIERS in apps/server/src/services/bonus.service.ts. */
 const TIERS = [
   { name: 'Unranked', threshold: 0, rakeback: '—' },
-  { name: 'Bronze', threshold: 1_000, rakeback: '5%' },
-  { name: 'Silver', threshold: 5_000, rakeback: '6%' },
-  { name: 'Gold', threshold: 25_000, rakeback: '8%' },
-  { name: 'Platinum', threshold: 100_000, rakeback: '10%' },
-  { name: 'Diamond', threshold: 500_000, rakeback: '10%' },
+  { name: 'Bronze', threshold: 2_500, rakeback: '1%' },
+  { name: 'Silver', threshold: 7_500, rakeback: '2%' },
+  { name: 'Gold', threshold: 17_500, rakeback: '3%' },
+  { name: 'Platinum', threshold: 32_500, rakeback: '4%' },
+  { name: 'Diamond', threshold: 50_000, rakeback: '5%' },
 ];
 
 const money = (value: string, digits = 2) => formatDecimalString(value, digits);
@@ -99,11 +100,6 @@ export default function VipPage() {
           <h1>{t('vip.title')}</h1>
           <p>{t('vip.subtitle')}</p>
         </div>
-        {/* The daily wheel moved to the Free Money hub, which owns every
-            recurring reward. This page is tier progression and rakeback. */}
-        <Link className="vip__wheel-btn" href="/freemoney">
-          {t('vip.rewardsHub')}
-        </Link>
       </header>
 
       {error && <p className="vip__error">{error}</p>}

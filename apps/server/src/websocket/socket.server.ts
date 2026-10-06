@@ -26,7 +26,9 @@ import {
   isInstantGame,
   mines,
   chicken,
+  avia,
 } from '../engines';
+import { AVIA } from '@frigat/shared';
 import {
   processBet,
   processWin,
@@ -233,6 +235,7 @@ const crashManager = new CrashRoundManager(
 let logError: (obj: Record<string, unknown>, msg: string) => void = () => {};
 
 function accrueAffiliate(input: {
+  gameType: string;
   userId: string;
   betId: string;
   stake: string;
@@ -380,14 +383,48 @@ async function handleInstantBet(
 ) {
   const amount = String(payload.amount ?? '');
   const currency = String(payload.currency ?? 'USD');
+  let params = (payload.params as Record<string, unknown>) ?? payload;
 
-  // 1) Debit the stake atomically.
-  const bet = await processBet({ userId, amount, gameType, currency });
+  // What is debited. Normally the stake; an Avia safe landing adds its fee.
+  // Payouts are always priced off `amount` — the stake — never off this.
+  let charged = amount;
+
+  if (gameType === 'AVIA') {
+    const mode = params.mode ?? 'fast';
+    if (!avia.isAviaMode(mode)) return fail(ws, `Unknown Avia mode: ${String(mode)}`, 'BAD_REQUEST');
+    const safe = params.safe === true;
+    if (safe) {
+      // The fee is flat, so a guaranteed landing is only priced for the house
+      // up to this stake — see AVIA.safeLanding in @frigat/shared. The client
+      // shows the cap, but only this check enforces it.
+      const cap = avia.safeLandingMaxStake(mode);
+      let stake: Prisma.Decimal;
+      try {
+        stake = new D(amount);
+      } catch {
+        return fail(ws, 'Invalid bet amount', 'BAD_REQUEST');
+      }
+      if (stake.gt(cap)) {
+        return fail(
+          ws,
+          `Safe landing covers bets up to $${cap.toFixed(2)} at this speed`,
+          'SAFE_LANDING_LIMIT'
+        );
+      }
+      charged = stake.plus(AVIA.safeLanding.fee).toFixed(2);
+    }
+    // Rebuilt rather than passed through, so nothing else the client sent can
+    // reach the engine.
+    params = { mode, safe };
+  }
+
+  // 1) Debit the stake (and any fee) atomically.
+  const bet = await processBet({ userId, amount: charged, gameType, currency });
 
   // 2) Resolve the outcome against a fresh, nonce-advanced seed.
   const seed = await nextSeedContext(userId);
   const engine = INSTANT_ENGINES[gameType as keyof typeof INSTANT_ENGINES];
-  const result = engine((payload.params as Record<string, unknown>) ?? payload, seed);
+  const result = engine(params, seed);
 
   // 3) Credit winnings (if any) atomically.
   let balance = bet.balance;
@@ -410,14 +447,15 @@ async function handleInstantBet(
     balance = credited.balance;
   }
 
-  accrueAffiliate({ userId, betId: bet.transactionId, stake: amount, payout, currency });
+  accrueAffiliate({ gameType: gameType, userId, betId: bet.transactionId, stake: charged, payout, currency });
 
-  // 4) Persist the game session for history / audit.
+  // 4) Persist the game session for history / audit. The bet amount is what
+  // was paid in, fee included, so RTP read from sessions stays honest.
   const session = await prisma.gameSession.create({
     data: {
       userId,
       gameType: gameType as any,
-      betAmount: new D(amount),
+      betAmount: new D(charged),
       payout: new D(payout),
       multiplier: result.multiplier,
       serverSeed: seed.serverSeed,
@@ -434,7 +472,7 @@ async function handleInstantBet(
     data: {
       sessionId: session.id,
       gameType,
-      betAmount: amount,
+      betAmount: charged,
       payout,
       multiplier: result.multiplier,
       win: result.win,
@@ -452,7 +490,7 @@ async function handleInstantBet(
     userId,
     username: meta?.username ?? 'player',
     gameType,
-    betAmount: amount,
+    betAmount: charged,
     multiplier: result.multiplier,
     payout,
   });
@@ -531,7 +569,7 @@ async function handleMinesReveal(
     state.active = false;
     gameState.clearMines(userId);
 
-    accrueAffiliate({
+    accrueAffiliate({ gameType: 'MINES',
       userId,
       betId: state.betTransactionId,
       stake: state.betAmount,
@@ -620,7 +658,7 @@ async function handleMinesCashout(
   state.active = false;
   gameState.clearMines(userId);
 
-  accrueAffiliate({
+  accrueAffiliate({ gameType: 'MINES',
     userId,
     betId: state.betTransactionId,
     stake: state.betAmount,
@@ -753,7 +791,7 @@ async function handleChickenStep(ws: WebSocket, userId: string) {
     state.active = false;
     gameState.clearChicken(userId);
 
-    accrueAffiliate({
+    accrueAffiliate({ gameType: 'CHICKEN',
       userId,
       betId: state.betTransactionId,
       stake: state.betAmount,
@@ -880,7 +918,7 @@ async function settleChickenCashout(ws: WebSocket, state: ChickenState, auto: bo
   }
   gameState.clearChicken(state.userId);
 
-  accrueAffiliate({
+  accrueAffiliate({ gameType: 'CHICKEN',
     userId: state.userId,
     betId: state.betTransactionId,
     stake: state.betAmount,
@@ -1108,7 +1146,7 @@ async function handleCrashCashout(ws: WebSocket, userId: string) {
 
   gameState.clearCrashBet(userId);
 
-  accrueAffiliate({
+  accrueAffiliate({ gameType: 'CRASH',
     userId,
     betId: bet.betTransactionId,
     stake: bet.amount,
@@ -1180,7 +1218,7 @@ async function settleCrashBust(round: CrashRound) {
     },
   });
 
-  accrueAffiliate({
+  accrueAffiliate({ gameType: 'CRASH',
     userId,
     betId: bet.betTransactionId,
     stake: bet.amount,
