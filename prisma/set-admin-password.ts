@@ -1,17 +1,3 @@
-/**
- * Sets the admin password — and nothing else. Safe to run against a live
- * database, unlike seed.ts, which also creates a funded test user.
- *
- *   DATABASE_URL='postgresql://…' ADMIN_PASSWORD='…' npx tsx prisma/set-admin-password.ts
- *
- * ADMIN_EMAIL defaults to admin@frigat.local. The account is created if it
- * does not exist, and every existing session for it is signed out.
- *
- * Raw SQL on purpose, touching only columns every migration level has: the
- * generated client selects every column in schema.prisma, so it fails against
- * a deployment whose database is a few migrations behind this checkout.
- */
-
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';

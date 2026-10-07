@@ -1,17 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Create account
- *
- * Two steps, because an account is no longer created from a form submission
- * alone: step one validates the address and password and asks the server for a
- * code, step two spends that code to create the User and Wallet and open the
- * session.
- *
- * Nothing exists in the database between the two — an abandoned sign-up leaves
- * a code row that expires in five minutes, not a half-made account.
- */
-
 import {
   Suspense,
   useCallback,
@@ -30,6 +18,8 @@ import {
   confirmRegistration,
   DEFAULT_DESTINATION,
   requestRegistrationCode,
+  signInWithGoogle,
+  TotpRequiredError,
   type CodeChallenge,
 } from '@/app/(auth)/authClient';
 import {
@@ -49,6 +39,9 @@ import { PasswordChecklist } from '@/app/(auth)/PasswordChecklist';
 const MIN_PASSWORD = PASSWORD_POLICY.minLength;
 
 import { useLanguage } from '@/components/providers/LanguageProvider';
+import { PasswordInput } from '@/components/auth/PasswordInput';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+import { showToast } from '@/lib/toast';
 
 function RegisterForm() {
   const { t } = useLanguage();
@@ -61,23 +54,15 @@ function RegisterForm() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Set once the server has accepted the details and emailed a code. Its
-  // presence is the second step.
   const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
   const [digits, setDigits] = useState<string[]>(emptyDigits);
   const [cooldown, setCooldown] = useState(0);
 
-  // Single-use token: reset the widget after every attempt, or the retry
-  // replays one Cloudflare has already redeemed.
   const [turnstileToken, setTurnstileToken] = useState('');
   const turnstileRef = useRef<TurnstileHandle>(null);
 
-  // Mirrors the server's policy from @frigat/shared, so the form cannot promise
-  // something the API will refuse.
   const { failing, ready: passwordReady } = evaluatePassword(password);
 
-  // Resend countdown, anchored to a deadline so a backgrounded tab does not
-  // drift out of step with the server's cooldown.
   useEffect(() => {
     if (cooldown <= 0) return;
     const deadline = Date.now() + cooldown * 1000;
@@ -87,11 +72,9 @@ function RegisterForm() {
       if (left <= 0) clearInterval(timer);
     }, 250);
     return () => clearInterval(timer);
-    // Restarted only when a new cooldown is issued.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cooldown === 0]);
 
-  /** Step one: hand the details to the server, which emails a code. */
   const requestCode = async (event: FormEvent) => {
     event.preventDefault();
     if (busy) return;
@@ -115,8 +98,6 @@ function RegisterForm() {
         { email: email.trim(), password, turnstileToken },
         ref
       );
-      // Step one's widget unmounts with the form; clearing the token stops a
-      // spent value being sent while step two's fresh widget is still solving.
       setTurnstileToken('');
       setChallenge(result);
       setDigits(emptyDigits());
@@ -125,14 +106,11 @@ function RegisterForm() {
     } catch (err) {
       setError(err instanceof AuthError ? err.message : 'Something went wrong. Try again.');
     } finally {
-      // Single-use token: spent by the attempt whatever the outcome, so the
-      // next click needs a fresh one.
       turnstileRef.current?.reset();
       setBusy(false);
     }
   };
 
-  /** Step two: the code creates the account. Fires on the sixth digit. */
   const submitCode = useCallback(
     async (code: string) => {
       if (busy || !challenge || code.length !== OTP_DIGITS) return;
@@ -149,14 +127,12 @@ function RegisterForm() {
         focusFirstOtpBox();
         setBusy(false);
       } finally {
-        // Keeps the resend control armed with a fresh token after any attempt.
         turnstileRef.current?.reset();
       }
     },
     [busy, challenge, ref, router]
   );
 
-  /** Re-submits step one, minting a fresh code and restarting the wait. */
   const resendCode = async () => {
     if (busy || cooldown > 0) return;
     setBusy(true);
@@ -173,13 +149,31 @@ function RegisterForm() {
     } catch (err) {
       setError(err instanceof AuthError ? err.message : 'Could not send another code.');
     } finally {
-      // Spent either way — resending goes back through the guarded route.
       turnstileRef.current?.reset();
       setBusy(false);
     }
   };
 
-  // ── Step two ──
+  const reportGoogleError = (message: string) => {
+    setError(message);
+    showToast(message, 'error', 8000);
+  };
+
+  const submitGoogle = async (code: string, redirectUri: string) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await signInWithGoogle(code, redirectUri, ref);
+      router.replace(DEFAULT_DESTINATION);
+      router.refresh();
+    } catch (err) {
+      if (err instanceof TotpRequiredError) reportGoogleError(t('auth.googleUseSignIn'));
+      else reportGoogleError(err instanceof AuthError ? err.message : t('auth.googleFailed'));
+      setBusy(false);
+    }
+  };
+
   if (challenge) {
     return (
       <div className="auth__card">
@@ -218,8 +212,6 @@ function RegisterForm() {
           {busy ? t('auth.creatingAccount') : t('auth.verifyAndCreate')}
         </button>
 
-        {/* Mounted for the resend control, which goes back through the guarded
-            request-code route and needs a token of its own. */}
         <Turnstile
           ref={turnstileRef}
           onToken={setTurnstileToken}
@@ -255,7 +247,6 @@ function RegisterForm() {
     );
   }
 
-  // ── Step one ──
   return (
     <div className="auth__card">
       <span className="auth__brand">FRIGAT</span>
@@ -275,6 +266,7 @@ function RegisterForm() {
           {error}
         </p>
       )}
+
 
       <form onSubmit={requestCode} noValidate>
         <div className="auth__field">
@@ -302,10 +294,9 @@ function RegisterForm() {
           <label className="auth__label" htmlFor="register-password">
             {t('auth.password')}
           </label>
-          <input
+          <PasswordInput
             id="register-password"
             className="auth__input"
-            type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="••••••••"
@@ -327,10 +318,9 @@ function RegisterForm() {
           <label className="auth__label" htmlFor="register-confirm">
             {t('auth.confirmPassword')}
           </label>
-          <input
+          <PasswordInput
             id="register-confirm"
             className="auth__input"
-            type="password"
             value={confirm}
             onChange={(event) => setConfirm(event.target.value)}
             placeholder="••••••••"
@@ -350,6 +340,13 @@ function RegisterForm() {
           {busy ? t('auth.sendingCode') : t('auth.verifyEmailAction')}
         </button>
       </form>
+
+      <GoogleSignInButton
+        text="signup_with"
+        disabled={busy}
+        onCode={(code, redirectUri) => void submitGoogle(code, redirectUri)}
+        onError={(message) => reportGoogleError(message ?? t('auth.googleFailed'))}
+      />
 
       <p className="auth__alt">
         {t('auth.haveAccount')} <Link href="/login">{t('auth.signInLink')}</Link>

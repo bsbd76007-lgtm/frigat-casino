@@ -9,7 +9,6 @@ export interface SeedContext {
 
 export interface EngineResult {
   win: boolean;
-  /** Payout multiplier on the stake (0 = total loss). Money math done downstream in Decimal. */
   multiplier: number;
   resultData: Record<string, unknown>;
 }

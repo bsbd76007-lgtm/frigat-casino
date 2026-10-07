@@ -1,17 +1,3 @@
-/**
- * FRIGAT — Ledger Service
- *
- * The ONLY place balances are mutated. Every mutation runs inside
- * prisma.$transaction and is paired with a Transaction ledger row, so the
- * wallet balance and the transaction history can never diverge.
- *
- * Concurrency safety:
- *   Debits use a *guarded* updateMany — `where: { balance: { gte: amount } }`.
- *   Postgres evaluates the predicate and the decrement atomically, so two
- *   concurrent bets can never drive a balance negative (no double-spend),
- *   even under Read Committed isolation and without explicit row locks.
- */
-
 import { Prisma, TransactionType } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { auditWithin } from './audit.service';
@@ -56,7 +42,7 @@ function toAmount(amount: string | number, field = 'amount'): Prisma.Decimal {
 
 export interface ProcessBetInput {
   userId: string;
-  amount: string; // decimal string
+  amount: string;
   gameType: string;
   currency?: string;
 }
@@ -67,10 +53,6 @@ export interface ProcessBetResult {
   balance: string;
 }
 
-/**
- * Atomically debits a bet stake.
- * Throws InsufficientFundsError if balance < amount (no partial state written).
- */
 export async function processBet(
   input: ProcessBetInput
 ): Promise<ProcessBetResult> {
@@ -80,9 +62,6 @@ export async function processBet(
   await assertWagerAllowed(input.gameType, amount);
 
   const result = await prisma.$transaction(async (tx) => {
-    // Freeze is enforced here because this is the single gate every wager
-    // passes through, whatever the game. Checking it in the socket layer alone
-    // would leave a connection opened before the freeze able to keep betting.
     const account = await tx.user.findUnique({
       where: { id: input.userId },
       select: { frozen: true },
@@ -95,7 +74,6 @@ export async function processBet(
     });
     if (!wallet) throw new WalletNotFoundError();
 
-    // Guarded atomic debit — only succeeds if funds are sufficient.
     const debited = await tx.wallet.updateMany({
       where: { id: wallet.id, balance: { gte: amount } },
       data: { balance: { decrement: amount } },
@@ -132,8 +110,8 @@ export async function processBet(
 
 export interface ProcessWinInput {
   userId: string;
-  betId: string; // the originating BET transaction id (for traceability/idempotency)
-  payoutAmount: string; // decimal string, > 0
+  betId: string;
+  payoutAmount: string;
   currency?: string;
 }
 
@@ -142,12 +120,6 @@ export interface ProcessWinResult {
   balance: string;
 }
 
-/**
- * Atomically credits a payout in its own isolated transaction.
- *
- * Idempotency: keyed off the originating betId via the (unique) txHash column,
- * so a retried or duplicated settlement credits the wallet at most once.
- */
 export async function processWin(
   input: ProcessWinInput
 ): Promise<ProcessWinResult> {
@@ -162,7 +134,6 @@ export async function processWin(
     });
     if (!wallet) throw new WalletNotFoundError();
 
-    // Idempotency guard: if this win was already recorded, return current state.
     const existing = await tx.transaction.findUnique({
       where: { txHash: idempotencyKey },
       select: { id: true },
@@ -199,12 +170,6 @@ export interface AwardBonusInput {
   userId: string;
   amount: string;
   currency?: string;
-  /**
-   * Optional idempotency key for the ledger row. Transaction.txHash is unique,
-   * so supplying a key derived from whatever entitles the bonus (a claim id, a
-   * period) makes the credit safe to retry. Omit it for one-off awards that
-   * have no natural key.
-   */
   txHash?: string;
 }
 
@@ -239,10 +204,6 @@ export async function awardBonus(
         type: TransactionType.DEPOSIT,
         amount,
         status: 'COMPLETED',
-        // A caller with a natural key (a claim row id, say) supplies one, and
-        // the unique index on txHash then makes the credit idempotent: a retry
-        // after a mid-flight failure cannot pay twice. Callers without one keep
-        // the random key, which is unique but not idempotent.
         txHash:
           input.txHash ??
           `bonus:${input.userId}:${Date.now()}:${Math.random()
@@ -275,11 +236,6 @@ export async function transferBetweenUsers(
   const amount = toAmount(input.amount, 'transfer amount');
 
   return prisma.$transaction(async (tx) => {
-    // A transfer is a money-OUT path and takes the same freeze gate as a wager
-    // or a withdrawal. Without it, a frozen account could still empty itself
-    // through the chat /tip command into a clean account, which is exactly the
-    // move a freeze exists to stop. Checked inside the transaction so it cannot
-    // be raced by a freeze landing mid-transfer.
     const sender = await tx.user.findUnique({
       where: { id: input.fromUserId },
       select: { frozen: true },
@@ -350,15 +306,10 @@ export async function transferBetweenUsers(
 }
 
 export interface SettleAffiliateRewardInput {
-  /** The game the bet was on — its house edge is what the commission is cut from. */
   gameType: string;
   userId: string;
-  /** Originating BET transaction id — the idempotency key for this reward. */
   betId: string;
-  /** Stake that was debited, decimal string. */
   stake: string;
-  /** Amount credited back. Accepted for the call sites' convenience; no longer
-   *  used — see settleAffiliateReward for why commission ignores the result. */
   payout?: string;
   currency?: string;
 }
@@ -366,29 +317,11 @@ export interface SettleAffiliateRewardInput {
 export interface AffiliateRewardResult {
   transactionId: string;
   referrerId: string;
-  /** Reward credited, 8dp decimal string. */
   amount: string;
   affiliateBalance: string;
   replayed: boolean;
 }
 
-/**
- * Pays a referrer their RevShare cut of a downline's *net* loss.
- *
- * Net loss is stake − payout, so a bet that returned more than it cost earns
- * the referrer nothing; there is no reward on a winning or break-even bet.
- * Returns null whenever nothing is owed — no referrer, a net win, or a cut that
- * rounds to zero — so the caller can treat "not applicable" and "paid" alike.
- *
- * Idempotent on `betId` via the unique txHash column, matching processWin. A
- * replayed settlement therefore reports the original reward instead of paying
- * the referrer a second time.
- *
- * The reward is *not* debited from anyone. It is platform revenue share, so it
- * is minted against the house the same way a WIN is, and lands in the
- * referrer's `affiliateBalance` rather than their wagerable `balance`.
- */
-/** The house edge commission is cut from. Roulette's is structural (1/37). */
 function affiliateEdge(gameType: string): Prisma.Decimal {
   if (gameType === 'ROULETTE') return new D(1).dividedBy(37);
   const edge = (HOUSE_EDGE as Record<string, number>)[gameType];
@@ -401,12 +334,6 @@ export async function settleAffiliateReward(
   const currency = input.currency ?? 'USD';
   const stake = toAmount(input.stake, 'stake');
 
-  // Commission is cut from what the house *expects* to keep on the bet —
-  // stake × that game's edge — not from the player's loss on it. Paying a share
-  // of every losing bet, with no credit back for the winning ones, paid a
-  // referrer far more than the house earned: on a 50/50 game it came to about
-  // 12.5% of turnover against a 2.5% edge. Off the edge, a referrer can only
-  // ever receive a slice of real house revenue.
   const netLoss = stake.mul(affiliateEdge(input.gameType));
   if (netLoss.lessThanOrEqualTo(0)) return null;
 
@@ -420,8 +347,6 @@ export async function settleAffiliateReward(
     const referrerId = player?.referredById;
     if (!referrerId) return null;
 
-    // A self-referral would pay a user for losing their own money. Registration
-    // already rejects it; this is the backstop for rows written another way.
     if (referrerId === input.userId) return null;
 
     const existing = await tx.transaction.findUnique({
@@ -451,16 +376,12 @@ export async function settleAffiliateReward(
     const pct = referrer.revSharePercentage;
     if (pct.lessThanOrEqualTo(0)) return null;
 
-    // ROUND_DOWN, matching payoutOf: the platform never pays out a fraction it
-    // did not earn, and repeated rewards can't drift upward a satoshi at a time.
     const reward = netLoss
       .mul(pct)
       .dividedBy(100)
       .toDecimalPlaces(8, Prisma.Decimal.ROUND_DOWN);
     if (reward.lessThanOrEqualTo(0)) return null;
 
-    // Created on demand: a referrer who has never funded an account still has
-    // earnings to collect, and must not lose them for want of a wallet row.
     const wallet = await tx.wallet.upsert({
       where: { userId_currency: { userId: referrerId, currency } },
       update: {},
@@ -516,28 +437,11 @@ export class NothingToClaimError extends Error {
 
 export interface ClaimAffiliateResult {
   transactionId: string;
-  /** Amount swept, 8dp decimal string. */
   claimed: string;
   balance: string;
   affiliateBalance: string;
 }
 
-/**
- * Sweeps accrued RevShare earnings into the affiliate's wagerable balance.
- *
- * Not a deposit: no money enters the platform, it moves between two columns of
- * one wallet, so it is recorded as AFFILIATE_CLAIM.
- *
- * Concurrency: the decrement is a guarded updateMany on the *exact* amount read
- * (`affiliateBalance: { gte: amount }`), and the credit is derived from the
- * rows actually updated. Two simultaneous claims therefore cannot both sweep
- * the same earnings — the loser's predicate fails and it sees NothingToClaim
- * rather than double-crediting.
- *
- * Frozen accounts may still claim: a freeze stops wagering, and the money is
- * already the affiliate's. It simply becomes unspendable like the rest of
- * their balance.
- */
 export async function claimAffiliateEarnings(input: {
   userId: string;
   currency?: string;
@@ -601,19 +505,10 @@ export async function getBalance(
 
 export interface AdjustBalanceInput {
   userId: string;
-  /** Positive decimal string; `direction` decides the sign. */
   amount: string;
   direction: 'CREDIT' | 'DEBIT';
   currency?: string;
-  /**
-   * Caller-supplied key making the write idempotent. A double-submitted form
-   * or a retried request must not move money twice.
-   */
   idempotencyKey: string;
-  /**
-   * Who is doing this and why. Written inside the SAME transaction as the
-   * money movement, so an adjustment can never commit unaudited.
-   */
   audit: { adminId: string; reason: string };
 }
 
@@ -623,18 +518,6 @@ export interface AdjustBalanceResult {
   replayed: boolean;
 }
 
-/**
- * Manual balance adjustment performed by an administrator.
- *
- * Recorded as a normal ledger Transaction (DEPOSIT for a credit, WITHDRAWAL for
- * a debit) so wallet balance and transaction history still reconcile — there is
- * no back door that mutates a balance without a paired row.
- *
- * A debit uses the same guarded updateMany as a bet, so an adjustment can never
- * drive a wallet negative. Frozen accounts are still adjustable on purpose:
- * freezing stops the player wagering, it must not stop an operator correcting
- * or refunding the account.
- */
 export async function adjustBalance(
   input: AdjustBalanceInput
 ): Promise<AdjustBalanceResult> {

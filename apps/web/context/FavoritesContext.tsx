@@ -12,33 +12,15 @@ import {
 
 import { CATALOGUE, type CatalogueEntry } from '@/lib/gameCatalogue';
 
-/**
- * FRIGAT — Favourite games
- *
- * Held in localStorage under one key, shared across tabs through the `storage`
- * event so hearting a game in one tab lights up in the other.
- *
- * Deliberately not server-backed yet: there is no favourites column or
- * endpoint on the API, and inventing one client-side would give players a list
- * that silently disappears when they sign in on another device. When that
- * endpoint exists, this provider is the single place to sync from — every
- * consumer already reads through the hook.
- *
- * Stored ids are validated against the catalogue on read, so a stale entry
- * from a removed game cannot render a broken card.
- */
-
 const STORAGE_KEY = 'frigat.favorites';
 
 export type GameId = CatalogueEntry['slug'];
 
 interface FavoritesContextValue {
-  /** Favourited ids, in the order the player added them. */
   favorites: GameId[];
   isFavorite: (gameId: string) => boolean;
   toggleFavorite: (gameId: string) => void;
   clearFavorites: () => void;
-  /** Catalogue entries for the favourites, in catalogue order. */
   favoriteGames: CatalogueEntry[];
   count: number;
 }
@@ -57,7 +39,6 @@ function read(): GameId[] {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    // Drop anything that is not a game we still ship.
     return Array.isArray(parsed) ? parsed.filter(isKnownGame) : [];
   } catch {
     return [];
@@ -65,13 +46,10 @@ function read(): GameId[] {
 }
 
 export function FavoritesProvider({ children }: { children: ReactNode }) {
-  // Starts empty on both server and first client render; localStorage is read
-  // in an effect so the two markups match and hydration cannot mismatch.
   const [favorites, setFavorites] = useState<GameId[]>([]);
 
   useEffect(() => setFavorites(read()), []);
 
-  // Another tab changed the list.
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (event.key !== null && event.key !== STORAGE_KEY) return;
@@ -86,7 +64,6 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
-      /* private mode or a full quota — the session still works in memory */
     }
   }, []);
 
@@ -105,7 +82,6 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
         try {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
         } catch {
-          /* no-op */
         }
         return next;
       });

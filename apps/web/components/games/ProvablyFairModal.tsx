@@ -1,23 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Provably Fair Modal
- *
- * Surfaces the fairness commitment for the player's active seed pair:
- *
- *   hashedServerSeed  SHA256(serverSeed), published BEFORE any bet
- *   clientSeed        player-supplied entropy
- *   nonce             per-bet counter within the active pair
- *
- * Rotating the seed deactivates the current pair and REVEALS its serverSeed,
- * letting the player recompute every past outcome and check it against the
- * commitment they were shown up front. That reveal is the whole point of the
- * scheme, so the UI states it plainly before the player confirms.
- *
- * Mirrors the server contract in provableFair.service.ts: `setClientSeed`
- * requires 4–128 characters.
- */
-
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -37,7 +19,6 @@ import {
   VERIFIABLE_GAMES,
   type VerifiableGame,
 } from '@/lib/verify';
-/** Matches the bounds enforced by setClientSeed() on the server. */
 export const CLIENT_SEED_MIN_LENGTH = 4;
 export const CLIENT_SEED_MAX_LENGTH = 128;
 
@@ -176,9 +157,6 @@ function CopyableField({
       <span className="fg-pf__key">
         {label}
         {hint && (
-          // `title` carries the text for keyboard and assistive tech; `.tip`
-          // styles the pointer version from that same attribute, so the two
-          // can never disagree. tabIndex makes it reachable without a mouse.
           <span className="fg-pf__hint tip" title={hint} tabIndex={0} role="note">
             ?
           </span>
@@ -306,14 +284,6 @@ export function ProvablyFairModal({
     }
   }, [open, clientSeed, nonce]);
 
-  /**
-   * Recomputes a round from the seed triple and reports the game-specific
-   * result, not just the raw float — "your crash point was 2.47x" is something
-   * a player can check against what they saw; "0.5983…" is not.
-   *
-   * The maths lives in lib/verify.ts, which is pinned by a parity test against
-   * the server engines, so what this prints is what the server computed.
-   */
   const verifyOutcome = useCallback(async () => {
     setVerificationResult(null);
     setComputedOutcome(null);

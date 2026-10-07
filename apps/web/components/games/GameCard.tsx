@@ -25,10 +25,6 @@ export function GameCard({ entry, onLaunch }: GameCardProps) {
   const href = `/games/${slug}`;
   const art = GAME_ART[slug];
   const name = t(`games.${slug}.name`);
-  // Drawn poster first, raster second, icon last. GAME_POSTERS now covers every
-  // slug in the catalogue, so in practice the drawn branch always wins; the
-  // other two are the path for a game added before its poster is drawn, and for
-  // any jpg someone puts back in GAME_ART.
   const Poster = GAME_POSTERS[slug];
 
   const intercept = (event: React.MouseEvent) => {
@@ -48,8 +44,6 @@ export function GameCard({ entry, onLaunch }: GameCardProps) {
         aria-pressed={favorite}
         aria-label={t(favorite ? 'favorites.remove' : 'favorites.add', { game: name })}
         onClick={(event) => {
-          // The whole tile is a link; without both of these the toggle would
-          // navigate to the game as well.
           event.preventDefault();
           event.stopPropagation();
           toggleFavorite(slug);
@@ -72,10 +66,6 @@ export function GameCard({ entry, onLaunch }: GameCardProps) {
         </span>
       )}
 
-      {/* Poster art fills the top of the card. Decorative: the name below is
-          the accessible label, so an empty alt keeps screen readers from
-          announcing the title twice. Falls back to the SVG icon for any game
-          without art in /public. */}
       <span className="tile__art">
         {Poster ? (
           <Poster name={name} />
@@ -88,10 +78,6 @@ export function GameCard({ entry, onLaunch }: GameCardProps) {
             className="tile__img"
           />
         ) : (
-          /* No poster art: the icon and a title stand in for it, laid out
-             inside the art box so this card's body holds the same single
-             blurb as every other — a taller body stretches its whole grid
-             row, not just itself. */
           <span className="tile__fallback">
             <Icon size={54} />
             <span className="tile__fallback-name">{name}</span>
@@ -102,9 +88,6 @@ export function GameCard({ entry, onLaunch }: GameCardProps) {
           <Link className="tile__play" href={href} onClick={intercept}>
             {t('home.playNow')}
           </Link>
-          {/* Every game settles through the real ledger, so this cannot start a
-              free round. It opens the fairness dialog, where the seeds and the
-              maths are inspectable before anything is staked. */}
           <button
             type="button"
             className="tile__demo"
@@ -115,19 +98,11 @@ export function GameCard({ entry, onLaunch }: GameCardProps) {
         </div>
       </span>
 
-      {/* Titles live in the art box — printed into the poster for games that
-          have one, drawn beside the icon for those that do not. The body holds
-          only the blurb, so every card's body is the same height: a taller one
-          stretches its entire grid row, not just itself. */}
       <span className="tile__body">
         <span className="tile__blurb">{t(`games.${slug}.blurb`)}</span>
       </span>
 
 
-      {/* Covers the tile so the whole square is clickable; the overlay sits
-          above it. Kept an <a> even when the launcher intercepts the click, so
-          middle-click, ctrl-click and "open in new tab" still reach the game
-          route the way a link is expected to. */}
       <Link
         className="tile__link"
         href={href}

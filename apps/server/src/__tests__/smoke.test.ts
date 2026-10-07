@@ -28,11 +28,6 @@ describe('integration harness', () => {
   });
 
   it('can read and write through Prisma', async () => {
-    // Deliberately not "the database is empty": test files share one scratch
-    // database, so that assertion passed only when this file ran first and
-    // failed the moment another suite seeded a row. It tested ordering, not
-    // behaviour. The same goes for a total row count: other files create
-    // users in parallel, so this checks its own row, not the table's size.
     const created = await prisma.user.create({
       data: { email: `smoke-${Date.now()}@test.local`, passwordHash: 'x' },
       select: { id: true },

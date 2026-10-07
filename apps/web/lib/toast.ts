@@ -1,23 +1,11 @@
 'use client';
 
-/**
- * FRIGAT — Toast bus
- *
- * Deliberately the same shape as appPanels.ts: a window CustomEvent, no
- * context, no provider. A toast can then be raised from anywhere — a modal, a
- * hook, a socket handler — without that caller needing to sit under a provider
- * or thread a callback down through props it otherwise has no use for.
- *
- * The renderer is <Toaster />, mounted once in the dashboard layout.
- */
-
 export type ToastTone = 'success' | 'error' | 'info';
 
 export interface Toast {
   id: string;
   message: string;
   tone: ToastTone;
-  /** Milliseconds on screen. */
   duration: number;
 }
 

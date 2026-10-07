@@ -28,7 +28,6 @@ export function MinesIcon({ size = 40, title, ...rest }: GameIconProps) {
         </filter>
       </defs>
 
-      {/* The board behind it — three columns of unopened tiles. */}
       <g stroke="#232d3a" strokeWidth="1.2" fill="none" opacity=".75">
         <rect x="5" y="5" width="11" height="11" rx="2.5" />
         <rect x="32" y="5" width="11" height="11" rx="2.5" />
@@ -55,10 +54,8 @@ export function MinesIcon({ size = 40, title, ...rest }: GameIconProps) {
           strokeWidth="1.1"
           opacity=".65"
         />
-        {/* Specular highlight — reads as a hard sphere rather than a disc. */}
         <ellipse cx="20.6" cy="20.4" rx="2.9" ry="2.1" fill="#8fa3b8" opacity=".5" transform="rotate(-35 20.6 20.4)" />
 
-        {/* Fuse and its spark. */}
         <path
           d="M27.5 17.2c2.2-1.6 3.6-3.3 4.2-5.2"
           fill="none"

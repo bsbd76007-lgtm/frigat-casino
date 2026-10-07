@@ -1,14 +1,3 @@
-/**
- * Avia Masters — injected stylesheet.
- *
- * This project ships no utility CSS framework, so the board carries its own
- * rules and `useInjectedStyles` mounts them once per page.
- */
-
-// ─────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────
-
 export const STYLE_ID = 'fg-avia-masters-styles';
 
 export const CSS = `
@@ -23,13 +12,9 @@ export const CSS = `
 .avia__stage { position: relative; width: 100%; max-width: 820px; min-width: 0;
   aspect-ratio: 16 / 9; background: var(--fg-panel-2); border: var(--fg-edge);
   border-radius: var(--fg-r-lg); overflow: hidden; }
-/* touch-action: none — the canvas is a steering surface, so a drag across it
-   must not be interpreted as a page scroll or a pinch. cursor stays a pointer
-   so it reads as interactive on desktop. */
 .avia__canvas { display: block; width: 100%; height: 100%; touch-action: none;
   cursor: pointer; }
 
-/* ── Telemetry ── */
 .avia__hud { position: absolute; left: 12px; right: 12px; top: 12px; display: flex;
   flex-wrap: wrap; gap: 8px; pointer-events: none; }
 .avia__tile { flex: 1 1 auto; min-width: 84px; padding: 6px 6px;
@@ -42,7 +27,6 @@ export const CSS = `
 .avia__tile--mult .avia__tile-value { color: var(--fg-pos); }
 .avia__tile--payout .avia__tile-value { color: var(--fg-gold); }
 
-/* ── Steering, for touch ── */
 .avia__banner { position: absolute; left: 50%; top: 46%; transform: translate(-50%,-50%);
   padding: 8px 16px; text-align: center; font-size: 17px; font-weight: 800;
   border-radius: var(--fg-r-lg); pointer-events: none; }
@@ -54,7 +38,6 @@ export const CSS = `
 .avia__hint { position: absolute; left: 12px; bottom: 12px; margin: 0; font-size: 11px;
   color: rgba(226,232,240,.6); pointer-events: none; }
 
-/* ── Panel ── */
 .avia__panel { display: flex; flex-direction: column; gap: 14px; width: 100%;
   max-width: 820px; min-width: 0; flex: 0 0 auto; padding: 12px; box-sizing: border-box;
   background: var(--fg-panel); border: 1px solid var(--fg-line); border-radius: var(--fg-r-lg); }
@@ -89,8 +72,6 @@ export const CSS = `
 .avia__action:active:not(:disabled) { transform: translateY(1px); }
 .avia__action:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .avia__action:focus-visible { outline: none; box-shadow: var(--fg-ring); }
-/* In-flight standing. Replaces the old Land button: the deck banks the round,
-   so this reports rather than offers. */
 .avia__standing { display: flex; flex-direction: column; gap: 2px; width: 100%;
   padding: 8px 10px; text-align: center; border-radius: var(--fg-r-lg);
   background: rgba(250,204,21,.1); border: 1px solid rgba(250,204,21,.35); }
@@ -100,12 +81,6 @@ export const CSS = `
   color: var(--fg-gold-soft); }
 .avia__standing small { font-size: 11px; color: rgba(253,224,71,.75); }
 
-/* The blocked state has to be unmissable.
-   A disabled Fly button swallows the click silently, so this line is the only
-   thing telling a player why the board will not move — and as 12px of dull red
-   text wedged between the stake chips and the button, it was routinely read as
-   a caption. An insufficient balance then looks exactly like a broken game.
-   Boxed, so it reads as the reason rather than as decoration. */
 .avia__error { display: flex; align-items: center; justify-content: center; gap: 6px;
   margin: 0; padding: 8px 10px; font-size: 12px; font-weight: 700; line-height: 1.4;
   text-align: center; color: var(--fg-red);
@@ -115,7 +90,6 @@ export const CSS = `
 .avia__note { margin: 0; font-size: 10.5px; line-height: 1.5; color: var(--fg-dim);
   text-align: center; }
 
-/* ── Speed ── */
 .avia__speeds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .avia__speed { display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 8px 4px; font-family: inherit; font-size: 13px; font-weight: 800;
@@ -131,7 +105,6 @@ export const CSS = `
   border-color: var(--fg-accent-deep); }
 .avia__speed--on small { color: inherit; opacity: .85; }
 
-/* ── Safe landing ── */
 .avia__safe { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px;
   border-radius: var(--fg-r-lg); border: 1px solid var(--fg-line); background: var(--fg-sunken);
   cursor: pointer; transition: border-color var(--fg-t), background var(--fg-t); }
@@ -144,7 +117,6 @@ export const CSS = `
   background: color-mix(in srgb, var(--fg-gold) 10%, transparent); }
 .avia__safe--on .avia__safe-text b { color: var(--fg-gold); }
 
-/* ── Landing spots ── */
 .avia__spots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .avia__spot { padding: 6px 4px; text-align: center; font-size: 11px; font-weight: 700;
   color: var(--fg-muted); border-radius: var(--fg-r); border: 1px solid var(--fg-line); }

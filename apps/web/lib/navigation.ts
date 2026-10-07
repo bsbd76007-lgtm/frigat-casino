@@ -16,21 +16,9 @@ export const NAV_GAMES: readonly NavGame[] = [
   { slug: 'keno', labelKey: 'nav.keno' },
   { slug: 'chicken', labelKey: 'nav.chicken' },
   { slug: 'slots', labelKey: 'nav.slots' },
-  // The slug is the route: Sidebar builds `/games/${slug}`.
   { slug: 'avia-masters', labelKey: 'nav.aviaMasters' },
 ];
 
-/**
- * Sidebar groupings.
- *
- * Derived from the catalogue's own categories rather than a second hand-kept
- * list: a game added to `CATALOGUE` lands in the right group automatically, and
- * the two can never disagree about which games exist.
- *
- * There is no Sports group. The platform has no sports product, and the rail
- * already refuses to link routes that do not exist — a heading advertising a
- * market nobody can bet into is worse on a casino than an absent one.
- */
 export interface NavGroup {
   id: string;
   label: string;
@@ -58,7 +46,6 @@ export interface DockItem {
   labelKey: string;
   category?: GameCategory;
   panel?: 'deposit';
-  /** A route to visit, rather than a filter to apply to the home grid. */
   href?: string;
 }
 

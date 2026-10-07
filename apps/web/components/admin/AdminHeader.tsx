@@ -1,17 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Admin header bar
- *
- * Search, theme toggle, notification dropdown and profile badge.
- *
- * The notification list is not decorative: it is derived from live operational
- * state (pending payouts, frozen accounts, maintenance mode), so the badge
- * count means "things are waiting for you" rather than "you have unread
- * marketing". A dot that never corresponds to work trains operators to ignore
- * it, which is worse than having no dot.
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -52,7 +40,6 @@ export function AdminHeader({
     try {
       stored = window.localStorage.getItem(THEME_KEY);
     } catch {
-      /* no-op */
     }
     const isLight = stored === 'light';
     setLight(isLight);
@@ -69,7 +56,6 @@ export function AdminHeader({
       try {
         window.localStorage.setItem(THEME_KEY, next ? 'light' : 'dark');
       } catch {
-        /* no-op */
       }
       return next;
     });
@@ -104,7 +90,6 @@ export function AdminHeader({
         });
         setAlerts(next);
       } catch {
-        /* no-op */
       }
     };
 

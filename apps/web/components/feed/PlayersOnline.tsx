@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { useLanguage } from '@/components/providers/LanguageProvider';
 
-/** Presence changes slowly; a tighter poll would be traffic for nothing. */
 const POLL_MS = 30_000;
 
 export function PlayersOnline() {
@@ -20,13 +19,10 @@ export function PlayersOnline() {
         .then((body: { online?: number } | null) => {
           if (!active) return;
           const value = body?.online;
-          // The server reports a Set size, so this is belt and braces: a
-          // malformed or negative payload must never render as "-1 players".
           if (typeof value !== 'number' || !Number.isFinite(value)) return;
           setOnline(Math.max(0, Math.floor(value)));
         })
         .catch(() => {
-          /* no-op */
         });
     };
 

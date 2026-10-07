@@ -20,10 +20,6 @@ import { Toaster } from '@/components/ui/Toaster';
 
 import { subscribeToPanels } from '@/lib/appPanels';
 
-/**
- * Shown when no token was found in localStorage on load. The token itself is
- * obtained at /login now, so this only has to point the way there.
- */
 function SignInGate() {
   const { t } = useLanguage();
   const { socket } = useGameSocket();
@@ -66,8 +62,6 @@ function DashboardChrome({ children }: { children: ReactNode }) {
     rotateError,
   } = useGameSocket();
   const [supportOpen, setSupportOpen] = useState(false);
-  // Open by default on desktop where the rail is docked; the media query in
-  // CSS hides it on mobile until the hamburger sets this true.
   const [isNavOpen, setIsNavOpen] = useState(false);
 
   useEffect(
@@ -92,12 +86,8 @@ function DashboardChrome({ children }: { children: ReactNode }) {
       </div>
 
 
-      {/* Support is account-scoped and hides itself when signed out. There is
-          no floating launcher: the sidebar's Support control opens it. */}
       <SupportChat open={supportOpen} onOpenChange={setSupportOpen} />
 
-      {/* One renderer for the whole dashboard; anything can raise a toast
-          through lib/toast without reaching for this component. */}
       <Toaster />
 
       <ProvablyFairModal
@@ -120,8 +110,6 @@ function DashboardChrome({ children }: { children: ReactNode }) {
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <GameSocketProvider>
-      {/* Wraps the header and the page together: the input lives in one and
-          the filtered grid in the other. */}
       <SearchProvider>
         <FavoritesProvider>
           <DashboardChrome>{children}</DashboardChrome>

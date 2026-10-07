@@ -15,7 +15,7 @@ interface QueueResponse {
 }
 
 async function loadQueue() {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const base = API_URL;
   try {
     const response = await fetch(`${base}/api/admin/withdrawals?status=PENDING&take=50`, {

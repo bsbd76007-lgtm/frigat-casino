@@ -16,7 +16,6 @@ interface DiceRound {
   roll: number;
   win: boolean;
   payout: string | null;
-  /** The line and side the roll was settled against, not the current controls. */
   target: number;
   direction: Direction;
 }
@@ -33,11 +32,8 @@ export default function DicePage() {
   const [round, setRound] = useState<DiceRound | null>(null);
   const [complete, setComplete] = useState(false);
 
-  /** Ids the board can compare: re-rolling the same number still has to slide. */
   const roundSeq = useRef(0);
 
-  // autoSettle is off: the needle slides to the roll, so the controls stay
-  // locked for the whole slide rather than just until the server answers.
   const { busy, bet, settle } = useGameRound<{ roll?: number }>('DICE', {
     autoSettle: false,
     onResult: ({ result, win, payout: paid }) => {

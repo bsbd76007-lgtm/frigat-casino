@@ -82,7 +82,6 @@ export function RouletteIcon({ size = 40, title, ...rest }: GameIconProps) {
         strokeWidth="1"
       />
 
-      {/* Cross spokes over the inner track. */}
       <g stroke="#3a475a" strokeWidth="1.4" strokeLinecap="round">
         <path d={`M${CENTER} ${CENTER - INNER + 1.5}V${CENTER + INNER - 1.5}`} />
         <path d={`M${CENTER - INNER + 1.5} ${CENTER}H${CENTER + INNER - 1.5}`} />
@@ -91,7 +90,6 @@ export function RouletteIcon({ size = 40, title, ...rest }: GameIconProps) {
       <circle cx={CENTER} cy={CENTER} r="4.2" fill="#e0b055" />
       <circle cx={CENTER} cy={CENTER} r="1.5" fill="#0a0f14" opacity=".6" />
 
-      {/* The ball, parked in the pocket at roughly one o'clock. */}
       <circle cx="35" cy="15.6" r="2.5" fill="#f2f8fc" filter={`url(#${glow})`} />
       <circle cx="34.2" cy="14.8" r=".9" fill="#ffffff" />
     </svg>

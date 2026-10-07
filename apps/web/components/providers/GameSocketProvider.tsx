@@ -1,22 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Game Socket Provider
- *
- * Owns the single authenticated WebSocket for the whole dashboard. The header
- * (balance, fairness modal) and the active game page all read from here — if
- * each mounted its own `useSocket`, the server would see several connections
- * per player and balance frames would race between them.
- *
- * Also accumulates round history, which is only ever delivered *inside* game
- * events (GAME_RESULT, plus CRASH_ROUND_END for the crash strip).
- *
- * The active seed triple arrives two ways: GET /api/seeds/active gives the
- * player's current commitment before they have bet at all, and BET_ACCEPTED /
- * GAME_RESULT carry it forward as the nonce advances — so the fairness dialog
- * stays current without polling.
- */
-
 import {
   createContext,
   useCallback,
@@ -60,7 +43,6 @@ export interface GameSocketContextValue {
   seed: SeedInfo | null;
   seedLoading: boolean;
   seedError: string | null;
-  /** Server seed revealed by the most recent rotation, if any. */
   revealedServerSeed: string | null;
   revealedHashedServerSeed: string | null;
   history: GameHistoryEntry[];
@@ -111,14 +93,6 @@ export function GameSocketProvider({
   const [rotating, setRotating] = useState(false);
   const [rotateError, setRotateError] = useState<string | null>(null);
 
-  // The token is written by the sign-in pages, so on load it is simply read
-  // back from localStorage. `?token=…` still works as a development escape
-  // hatch for a hand-signed JWT, and is stripped from the URL immediately so
-  // it does not end up in history or a referrer header.
-  //
-  // Reading happens after mount, never during render: localStorage does not
-  // exist on the server, and disagreeing with the server's HTML would be a
-  // hydration mismatch.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -145,12 +119,6 @@ export function GameSocketProvider({
   const balance = useBalance(socket, { fractionDigits: 2 });
   const { subscribe, send: rawSend } = socket;
 
-  /**
-   * Every write to `seed` bumps this. A GET that started before a bet
-   * acknowledgement or a rotation landed is stale by the time it resolves —
-   * applying it would roll the displayed nonce backwards — so responses check
-   * that nothing overtook them first.
-   */
   const seedEpoch = useRef(0);
 
   const applySeed = useCallback((next: SeedInfo) => {
@@ -168,7 +136,6 @@ export function GameSocketProvider({
         typeof hashedServerSeed === 'string' &&
         nonce !== null
       ) {
-        // The bet consumed this nonce, so the next one is already one higher.
         applySeed({ clientSeed, hashedServerSeed, nonce: nonce + 1 });
       }
     };
@@ -254,8 +221,6 @@ export function GameSocketProvider({
     }
   }, [apiUrl, applySeed, token]);
 
-  // Load once the player is known, and again whenever they open the dialog —
-  // the nonce only advances client-side on games this tab actually played.
   useEffect(() => {
     if (!token) {
       seedEpoch.current += 1;
@@ -271,10 +236,6 @@ export function GameSocketProvider({
     if (fairnessOpen) void refreshSeed();
   }, [fairnessOpen, refreshSeed]);
 
-  /**
-   * Rotation retires the current pair and reveals its server seed, so the
-   * player can recompute every bet made under the commitment they were shown.
-   */
   const rotateSeed = useCallback(
     async (clientSeed: string) => {
       setRotating(true);

@@ -1,22 +1,20 @@
 'use client';
 
-/**
- * FRIGAT — Crash (single-player)
- *
- * A round exists only when this player starts one. The page sends BET, the
- * server opens a round addressed to this user alone, ticks it, and ends it on
- * either the cash-out or the crash point. Nothing runs between rounds, so the
- * player picks their own moment to start the next one.
- */
-
 import { useEffect, useMemo, useState } from 'react';
 
-import { CrashCanvas, type CrashPhase } from '@/components/canvas/CrashCanvas';
+import {
+  CrashCanvas,
+  elapsedSecondsFor,
+  multiplierAtSeconds,
+  type CrashPhase,
+} from '@/components/canvas/CrashCanvas';
 import { BetControls } from '@/components/games/BetControls';
 import { GameShell } from '@/components/games/GameShell';
 import { useGameSocket } from '@/components/providers/GameSocketProvider';
 import { useLanguage } from '@/components/providers/LanguageProvider';
 import { useGameRound } from '@/hooks/useGameRound';
+
+const AFTER_FLIGHT_MAX_SECONDS = 6;
 
 export default function CrashPage() {
   const { socket, balance, send, crashRounds } = useGameSocket();
@@ -29,27 +27,22 @@ export default function CrashPage() {
   const [crashPoint, setCrashPoint] = useState<number | null>(null);
   const [cashedOutAt, setCashedOutAt] = useState<number | null>(null);
   const [hasBet, setHasBet] = useState(false);
+  const [afterFlight, setAfterFlight] = useState<{ from: number; to: number } | null>(null);
 
-  // `busy` here means "a message is in flight", not "a round is running" —
-  // `phase` is the round. Every frame that answers one of our messages clears
-  // it, so autoSettle stays on for GAME_RESULT.
   const { busy, begin, settle, bet } = useGameRound('CRASH', {
     on: {
-      // The round is already running by the time this lands — the server opens
-      // it on the player's BET, so there is no betting window to count down.
       CRASH_ROUND_START: () => {
         setPhase('RUNNING');
         setMultiplier(1);
         setCrashPoint(null);
         setCashedOutAt(null);
+        setAfterFlight(null);
         settle();
       },
       CRASH_TICK: (data) => {
         if (typeof data.multiplier === 'number') setMultiplier(data.multiplier);
       },
       CRASH_ROUND_END: (data) => {
-        // Either ending frees the player to start another round, so the stake
-        // is released here rather than waiting on a next-round signal.
         setHasBet(false);
         settle();
 
@@ -58,6 +51,12 @@ export default function CrashPage() {
           if (typeof data.multiplier === 'number') {
             setCashedOutAt(data.multiplier);
             setMultiplier(data.multiplier);
+            if (typeof data.crashPoint === 'number') {
+              setCrashPoint(data.crashPoint);
+              if (data.crashPoint > data.multiplier) {
+                setAfterFlight({ from: data.multiplier, to: data.crashPoint });
+              }
+            }
           }
           return;
         }
@@ -71,25 +70,40 @@ export default function CrashPage() {
       BET_ACCEPTED: (data) => {
         setHasBet(true);
         settle();
-        // On a resume the live stake is the server's, not whatever is sitting
-        // in the input — the cash-out quote is computed from this.
         if (typeof data.amount === 'string') setAmount(data.amount);
       },
       RESUME_NONE: () => {
-        /* no live round to restore — the idle screen is already correct */
       },
     },
     onResult: ({ win, raw }) => {
-      // Only a win carries a cash-out multiplier; a bust reports the crash
-      // point here, which must not be shown as the player's exit.
       if (win && typeof raw.multiplier === 'number') {
         setCashedOutAt(raw.multiplier);
       }
     },
   });
 
-  // A reload mid-round leaves the stake committed server-side; without this the
-  // page would sit idle with no way to cash out before the round busts.
+  useEffect(() => {
+    if (!afterFlight || phase !== 'CASHED_OUT') return;
+    const t0 = elapsedSecondsFor(afterFlight.from);
+    const t1 = elapsedSecondsFor(afterFlight.to);
+    const durationMs = Math.min(t1 - t0, AFTER_FLIGHT_MAX_SECONDS) * 1000;
+    const started = performance.now();
+    let frame = 0;
+    const step = (now: number) => {
+      const k = durationMs <= 0 ? 1 : Math.min(1, (now - started) / durationMs);
+      if (k >= 1) {
+        setMultiplier(afterFlight.to);
+        setPhase('CRASHED');
+        setAfterFlight(null);
+        return;
+      }
+      setMultiplier(multiplierAtSeconds(t0 + (t1 - t0) * k));
+      frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [afterFlight, phase]);
+
   useEffect(() => {
     if (!socket.isOpen) return;
     send('RESUME', 'CRASH');
@@ -105,13 +119,6 @@ export default function CrashPage() {
     [crashRounds]
   );
 
-  /* Action-button state machine, in priority order:
-     1. no round running        → "Place bet", which starts one
-     2. RUNNING + live bet      → green "Cashout" with the live payout
-     3. otherwise (a round in flight the player is not in) → disabled
-
-     Every ending returns to state 1 on the same frame that ends the round, so
-     the player can immediately start another on their own timing. */
   const hasCashedOut = cashedOutAt !== null;
   const roundOver = phase === 'CRASHED' || phase === 'CASHED_OUT';
   const canBet = !hasBet && (phase === 'IDLE' || roundOver);
@@ -150,6 +157,14 @@ export default function CrashPage() {
                 <b style={{ color: 'var(--fg-gold)' }}>{cashedOutAt.toFixed(2)}×</b>
               </div>
             )}
+            {cashedOutAt !== null && crashPoint !== null && (
+              <div className="opt__stat">
+                <span>{t('game.rocketFlewTo')}</span>
+                <b style={{ color: phase === 'CRASHED' ? 'var(--fg-red)' : 'var(--fg-text)' }}>
+                  {(phase === 'CRASHED' ? crashPoint : multiplier).toFixed(2)}×
+                </b>
+              </div>
+            )}
           </div>
 
           <BetControls
@@ -160,9 +175,6 @@ export default function CrashPage() {
             canCashout={canCashout}
             cashoutTone="accent"
             cashoutMultiplier={canCashout ? multiplier : null}
-            /* The live value of cashing out right now. The button showed only
-               the multiplier before, leaving the player to do the arithmetic
-               on the one control that is time-critical. */
             cashoutAmount={
               canCashout ? (Number(amount) * multiplier).toFixed(2) : null
             }
@@ -173,9 +185,6 @@ export default function CrashPage() {
             }}
             disabled={!canBet && !canCashout}
             busy={busy}
-            /* Reached only when the cashout button is not showing. With
-               per-player rounds the fallback is the brief gap while a bet is
-               being accepted — there is no next round to wait for. */
             betLabel={canBet ? t('game.placeBet') : t('game.roundInProgress')}
           />
         </>

@@ -39,18 +39,10 @@ export interface RouletteCanvasProps {
   className?: string;
 }
 
-/**
- * The wheel's own colours. Red and black are the game's, not the interface's —
- * a roulette wheel that took the accent for its red would stop being a roulette
- * wheel — but the win trim is the shared gold and the cloth is the board floor,
- * so the bowl sits on the same table as every other game.
- */
-
 const WHEEL = {
   red: '#c8384a',
   black: '#1c1f26',
   green: POS,
-  /** The table's own green-slate, turned into a wooden-dark rim. */
   frame: '#3a2a20',
   frameLit: '#5a4232',
   track: '#2b3a34',
@@ -144,8 +136,6 @@ export function RouletteCanvas({
   const draw = useMemo(
     () =>
       ({ ctx, width, height, time }: CanvasFrame) => {
-        // A flat, top-down wheel. Sized off the shorter side so it is always a
-        // circle with room above it for the status pill and the marker.
         const outer = Math.min(width, height) * 0.42;
         if (outer <= 12) return;
 
@@ -185,16 +175,12 @@ export function RouletteCanvas({
 
         const winning = landing && progress >= 1 ? landing.pocket : null;
 
-        // No table fill: the canvas is transparent, so the wheel sits straight
-        // on the board area instead of on a square of its own.
         ctx.clearRect(0, 0, width, height);
 
-        // Frame: an outer wooden-dark rim, then the ball track inside it.
         disc(ctx, cx, cy, outer, WHEEL.frame);
         disc(ctx, cx, cy, rimInner, WHEEL.track);
         ring(ctx, cx, cy, rimInner, WHEEL.frameLit, Math.max(1, outer * 0.012));
 
-        // Pockets.
         const numberSize = Math.max(8, outer * 0.075);
         WHEEL_ORDER.forEach((value, index) => {
           const start = wheelAngle + index * SEGMENT;
@@ -209,7 +195,6 @@ export function RouletteCanvas({
             ctx.lineWidth = 2.5;
             ctx.stroke();
           }
-          // Upright along the radius, like a real wheel's numerals.
           ctx.save();
           ctx.translate(cx, cy);
           ctx.rotate(start + SEGMENT / 2 + Math.PI / 2);
@@ -221,7 +206,6 @@ export function RouletteCanvas({
           ctx.restore();
         });
 
-        // Pocket separators and the rings either side of the pockets.
         ctx.strokeStyle = WHEEL.separator;
         ctx.lineWidth = Math.max(1, outer * 0.008);
         for (let index = 0; index < WHEEL_ORDER.length; index += 1) {
@@ -234,7 +218,6 @@ export function RouletteCanvas({
         ring(ctx, cx, cy, pocketOuter, WHEEL.gold, Math.max(1.5, outer * 0.014));
         ring(ctx, cx, cy, pocketInner, WHEEL.gold, Math.max(1.5, outer * 0.014));
 
-        // Centre: a flat turret with four spokes that turn with the wheel.
         disc(ctx, cx, cy, pocketInner - outer * 0.01, WHEEL.cone);
         disc(ctx, cx, cy, hub, WHEEL.coneLit);
         ctx.strokeStyle = WHEEL.gold;
@@ -249,7 +232,6 @@ export function RouletteCanvas({
         }
         disc(ctx, cx, cy, hub * 0.24, WHEEL.gold);
 
-        // Ball: runs the track, then drops into the pocket as it slows.
         if (landing) {
           const eased = easeOutQuart(progress);
           const ballAngle = landing.ballFrom + (landing.ballTo - landing.ballFrom) * eased;
@@ -266,7 +248,6 @@ export function RouletteCanvas({
           disc(ctx, bx, by, rr, WHEEL.ball);
         }
 
-        // Marker at the top, pointing at the pocket that wins.
         ctx.beginPath();
         ctx.moveTo(cx - outer * 0.05, cy - outer - outer * 0.07);
         ctx.lineTo(cx + outer * 0.05, cy - outer - outer * 0.07);
@@ -275,9 +256,6 @@ export function RouletteCanvas({
         ctx.fillStyle = GOLD;
         ctx.fill();
 
-        // A compact status line above the bowl. The page already prints the full
-        // result under the canvas, so repeating it large here would only crowd
-        // the far rim — the wheel's own gold pocket and marker say which one won.
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         const readoutY = Math.max(14, (cy - outer - outer * 0.07) / 2);
@@ -286,8 +264,6 @@ export function RouletteCanvas({
           const text = `${winning} ${colour}`;
           ctx.font = `800 ${Math.max(11, Math.min(16, outer * 0.1))}px ${FONT.num}`;
           const pill = ctx.measureText(text).width + 22;
-          // Capped against the stage as well as the wheel: at phone width the
-          // header strip above the far lip is only a couple of dozen pixels.
           const pillH = Math.max(20, Math.min(outer * 0.13, height * 0.075));
           roundedPill(ctx, width / 2 - pill / 2, readoutY - pillH / 2, pill, pillH, alpha(GOLD, 0.16));
           ctx.strokeStyle = alpha(GOLD, 0.5);
@@ -322,7 +298,6 @@ export function RouletteCanvas({
       style={{
         display: 'block',
         width: '100%',
-        // Square: the wheel is drawn flat and top-down, so it is a circle.
         maxWidth: size * 1.2,
         aspectRatio: '1 / 1',
         margin: '0 auto',
@@ -333,7 +308,6 @@ export function RouletteCanvas({
   );
 }
 
-/** The status pill behind the result. Left as a live path so it can be stroked. */
 function roundedPill(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -376,7 +350,6 @@ function ring(
   ctx.stroke();
 }
 
-/** One pocket: the annular sector between two radii. Left as the live path. */
 function wedge(
   ctx: CanvasRenderingContext2D,
   x: number,

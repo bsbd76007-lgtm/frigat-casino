@@ -11,7 +11,6 @@ const ctx = (nonce = 0): SeedContext => ({
   hashedServerSeed: 'b'.repeat(64),
 });
 
-/** Finds a nonce landing on a chosen pocket, so payouts can be asserted exactly. */
 function nonceForPocket(pocket: number): number {
   for (let n = 0; n < 20_000; n += 1) {
     const { resultData } = spin({ bets: [{ position: 'straight:0', amount: '1' }] }, ctx(n));
@@ -70,17 +69,16 @@ describe('roulette — payouts', () => {
   });
 
   it('blends several bets into one stake-weighted multiplier', () => {
-    const n = nonceForPocket(17); // odd, black
+    const n = nonceForPocket(17);
     const result = spin(
       {
         bets: [
-          { position: 'straight:17', amount: '1' }, // 36x
-          { position: 'red', amount: '1' }, // 0
+          { position: 'straight:17', amount: '1' },
+          { position: 'red', amount: '1' },
         ],
       },
       ctx(n)
     );
-    // 36 returned on a stake of 2.
     expect(result.multiplier).toBe(18);
     expect(result.win).toBe(true);
   });
@@ -112,20 +110,6 @@ describe('roulette — invalid input', () => {
     }
   });
 
-  /**
-   * Documents current behaviour, which is weaker than the case above.
-   *
-   * `position.split(':')` only validates the *kind*, so a recognised kind with
-   * a missing or unparseable argument — 'straight' with no number, 'dozen:x' —
-   * falls through to `Number(undefined) === pocket`, which is false, and the
-   * bet is scored as an ordinary loss. The stake is taken for a bet the table
-   * never offered.
-   *
-   * Not a live exploit: it costs the player, not the house, and the socket
-   * layer supplies these strings. But it should reject rather than lose, and
-   * this test will fail loudly when that is fixed — which is the point of
-   * pinning it.
-   */
   it('currently scores a malformed argument as a loss instead of rejecting it', () => {
     for (const position of ['straight', 'dozen:x', 'column:']) {
       const result = spin({ bets: [{ position, amount: '1' }] }, ctx());

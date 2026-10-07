@@ -1,28 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Client-side provably-fair verifier
- *
- * A browser reimplementation of the server's outcome derivation, so a player
- * can recompute a settled round in their own tab and see that it matches.
- *
- * It has to agree with the server *exactly*, and it cannot simply import the
- * shared module: packages/shared/provably-fair uses node:crypto, which has no
- * browser build. This uses Web Crypto (SubtleCrypto) instead and mirrors the
- * same three constructions:
- *
- *   single draw : HMAC-SHA256(serverSeed, `${clientSeed}:${nonce}`)
- *   multi draw  : HMAC-SHA256(serverSeed, `${clientSeed}:${nonce}:${cursor}`)
- *   commitment  : SHA-256(serverSeed)
- *
- * In every case the first 13 hex chars (52 bits) are divided by 2^52 to land
- * in [0, 1) — 52 bits is exactly the mantissa of an IEEE-754 double, so the
- * conversion is lossless and free of modulo bias.
- *
- * Verified against the server engines in the repo's parity test; any change
- * here must keep that passing or the verifier will call honest rounds unfair.
- */
-
 import {
   AVIA,
   AVIA_SPOT_CURSOR,
@@ -59,13 +36,11 @@ function subtle(): SubtleCrypto {
   return cryptoObj.subtle;
 }
 
-/** SHA-256 hex digest, used to check a revealed seed against its commitment. */
 export async function sha256Hex(input: string): Promise<string> {
   const digest = await subtle().digest('SHA-256', encoder.encode(input));
   return toHex(digest);
 }
 
-/** HMAC-SHA256 hex digest keyed by the server seed. */
 async function hmacHex(serverSeed: string, message: string): Promise<string> {
   const key = await subtle().importKey(
     'raw',
@@ -93,10 +68,6 @@ export async function calculateOutcome(
   return floatFromHex(await hmacHex(serverSeed, `${clientSeed}:${nonce}`));
 }
 
-/**
- * One draw from the multi-draw stream. Mirrors `floatAt` in
- * apps/server/src/engines/provable.ts.
- */
 export async function floatAt(
   serverSeed: string,
   clientSeed: string,
@@ -108,10 +79,6 @@ export async function floatAt(
   );
 }
 
-/**
- * Fisher-Yates over [0, n) driven by the float stream — the same walk, in the
- * same order, as `provableShuffle` on the server.
- */
 export async function provableShuffle(
   n: number,
   serverSeed: string,
@@ -134,17 +101,6 @@ export async function verifyCommitment(
   const actual = await sha256Hex(revealedServerSeed);
   return actual.toLowerCase() === publishedHash.trim().toLowerCase();
 }
-
-// ─────────────────────────────────────────────
-// Per-game reconstruction
-//
-// These constants are duplicated from apps/server/src/config/game.config.ts
-// rather than imported, because that module is server-side. The parity test
-// (apps/server/src/__tests__/fairness-parity.test.ts) pins them both ways: it
-// compares these literals against HOUSE_EDGE *and* runs both implementations
-// over the same seeds, so a formula or rounding change is caught too. The
-// comment used to promise that test before it existed — it exists now.
-// ─────────────────────────────────────────────
 
 const EDGE = {
   CRASH: 0.025,
@@ -189,11 +145,6 @@ export async function verifyMines(
   return shuffled.slice(0, minesCount).sort((a, b) => a - b);
 }
 
-/**
- * Dice roll in [0, 100). Mirrors the dice engine, which compares the raw
- * unrounded value against the target — so this must not round either.
- */
-/** Chicken Road ladder — mirrors `multiplierAt` in chicken.engine.ts. */
 export function chickenMultiplierAt(mode: ChickenMode, lane: number): number {
   if (lane <= 0) return 1;
   let survival = 1;
@@ -201,25 +152,18 @@ export function chickenMultiplierAt(mode: ChickenMode, lane: number): number {
   return Math.floor(((1 - EDGE.CHICKEN) / survival) * 100) / 100;
 }
 
-/** Last lane of the road for a mode — mirrors `maxLanes` in chicken.engine.ts. */
 export function chickenMaxLanes(mode: ChickenMode): number {
   let lane = 1;
   while (chickenMultiplierAt(mode, lane + 1) <= CHICKEN.maxMultiplier) lane += 1;
   return lane;
 }
 
-/** First lane a round may cash out on — mirrors `minCashoutLane` in chicken.engine.ts. */
 export function chickenMinCashoutLane(mode: ChickenMode): number {
   let lane = 1;
   while (chickenMultiplierAt(mode, lane) < CHICKEN.minCashoutMultiplier) lane += 1;
   return lane;
 }
 
-/**
- * The lane a Chicken Road seed kills the chicken in, or null if it survives
- * the whole road. Lane `k` survives when draw `k - 1` is at least that lane's
- * hazard, which ramps up over the first lanes (`chickenHazardAt`).
- */
 export async function verifyChicken(
   serverSeed: string,
   clientSeed: string,
@@ -234,21 +178,14 @@ export async function verifyChicken(
   return null;
 }
 
-/** Avia Masters landing chance — the shared formula at the web's EDGE literal. */
 export function aviaLandingChance(mode: AviaMode): number {
   return sharedAviaLandingChance(mode, EDGE.AVIA);
 }
 
-/** Largest stake a safe landing covers in `mode` — mirrors the server's cap. */
 export function aviaSafeLandingMaxStake(mode: AviaMode): number {
   return sharedAviaSafeLandingMaxStake(mode, EDGE.AVIA);
 }
 
-/**
- * Replays an Avia Masters flight: cursor 0 decides the landing (skipped when
- * the landing was bought), cursor 1 the flight length, each event takes two
- * draws — its kind, then its altitude — and AVIA_SPOT_CURSOR picks the spot.
- */
 export async function verifyAvia(
   serverSeed: string,
   clientSeed: string,

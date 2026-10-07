@@ -1,14 +1,3 @@
-/**
- * FRIGAT — Admin dashboard
- *
- * Server component. It reads the session cookie and calls the Fastify admin API
- * with a Bearer token, so the credential is never exposed to the browser and
- * the API re-authorises the request independently.
- *
- * Money arrives as Decimal strings and is formatted digit-wise — parsing GGR
- * through a JS float would drift once volume is real.
- */
-
 import { cookies } from 'next/headers';
 
 import { SESSION_COOKIE } from '@/lib/adminAuth';
@@ -40,7 +29,7 @@ type MetricsResult =
   | { ok: false; reason: string };
 
 async function loadMetrics(): Promise<MetricsResult> {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return { ok: false, reason: 'No admin session cookie was present.' };
 
   const base = API_URL;
@@ -125,9 +114,6 @@ export default async function AdminDashboardPage() {
         </div>
       ) : (
         <>
-          {/* The four headline cards, in the order an operator reads them:
-              what we made, who is playing, what is queued to leave, and
-              whether the games are holding their edge. */}
           <section className="metrics">
             <Metric
               label="Total Revenue (GGR)"

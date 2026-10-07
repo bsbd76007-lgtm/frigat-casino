@@ -61,7 +61,6 @@ export function Navbar({ onMenuToggle, menuOpen }: NavbarProps) {
     try {
       await fetch('/api/session', { method: 'DELETE' });
     } catch {
-      /* no-op */
     }
     router.replace('/login');
   };
@@ -80,12 +79,7 @@ export function Navbar({ onMenuToggle, menuOpen }: NavbarProps) {
         </svg>
       </button>
 
-      {/* The SVG carries its own <title>, so the link needs no extra label. */}
       <Link className="dash__brand" href="/" aria-label={t('nav.homeAria')}>
-        {/* Monogram plus the name in text, matching the rail so the two chrome
-            surfaces carry one lockup. The mark is keyed out of
-            frigat-model.jpg and ships white with real transparency, so it
-            needs none of .brandmark's invert treatment. */}
         <Image
           src="/frigat-monogram.png"
           alt=""
@@ -97,19 +91,11 @@ export function Navbar({ onMenuToggle, menuOpen }: NavbarProps) {
         <span className="dash__word">Frigat</span>
       </Link>
 
-      {/* Search sits where the game links were: the rail owns navigation now,
-          so the header is for finding things and for the cashier. */}
       <HeaderSearch />
 
-      {/* Ambient context, so it sits with the nav rather than competing with
-          the cashier controls on the right — which already wrap on mobile. */}
       <PlayersOnline />
 
       <div className="dash__right">
-        {/* Signed out: the header's whole job is to get the player registered,
-            so the cashier controls give way to the two auth CTAs. Showing a
-            balance of "—" beside a deposit button to someone with no account
-            is just a dead control. */}
         {!token ? (
           <>
             <LanguageSwitcher />
@@ -120,9 +106,6 @@ export function Navbar({ onMenuToggle, menuOpen }: NavbarProps) {
             <Link className="dash__cta" href="/register">
               {t('header.register')}
             </Link>
-            {/* Same control in both states: signed in it opens the profile,
-                signed out it opens sign-in, so the icon always does the thing
-                a player expects of an account button. */}
             <button
               type="button"
               className="dash__avatar"
@@ -148,9 +131,6 @@ export function Navbar({ onMenuToggle, menuOpen }: NavbarProps) {
               aria-label={t('header.connection', { status: socket.status })}
               title={t('header.socket', { status: socket.status })}
             />
-            {/* The balance doubles as the cashier entry point — clicking it
-                opens the deposit dialog, which is what a player reaching for
-                their balance almost always wants. */}
             <button
               type="button"
               className="dash__balance dash__balance--action"
@@ -172,7 +152,6 @@ export function Navbar({ onMenuToggle, menuOpen }: NavbarProps) {
             >
               {t('header.provablyFair')}
             </button>
-            {/* The primary action in the header for a signed-in player. */}
             <button
               type="button"
               className="dash__cta"
@@ -181,9 +160,6 @@ export function Navbar({ onMenuToggle, menuOpen }: NavbarProps) {
               {t('header.deposit')}
             </button>
 
-            {/* Account panel: profile, wallet, security and VIP. Signing out
-                moved in there with the rest of the account controls, which is
-                where a player looks for it. */}
             <button
               type="button"
               className="dash__avatar"
@@ -210,8 +186,6 @@ export function Navbar({ onMenuToggle, menuOpen }: NavbarProps) {
         onTabChange={setWalletTab}
         onClose={() => setWalletOpen(false)}
       >
-        {/* Both bodies stay mounted only while the dialog is open; the
-            inactive one is unmounted so its reset effect fires on close. */}
         {walletTab === 'deposit' ? (
           <DepositModal open={walletOpen} />
         ) : (

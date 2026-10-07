@@ -14,10 +14,13 @@ interface WithdrawalResult {
   withdrawalId: string;
   status: string;
   amount: string;
+  amountCurrency: 'USD';
+  payoutAmount: string | null;
+  exchangeRateUsdt: string | null;
+  exchangeRateSource: 'BINANCE' | 'USDT_PEG' | null;
   currency: string;
   address: string;
   balance: string;
-  /** Set when no payout gateway was configured and an operator will send it. */
   review?: boolean;
 }
 
@@ -27,11 +30,6 @@ function addressLooksValid(value: string): boolean {
   return value.length >= 20 && value.length <= 128 && /^[a-zA-Z0-9:_-]+$/.test(value);
 }
 
-/**
- * Smallest withdrawal, in USD — the same for every coin, because the amount is
- * always entered in USD and the coin is only how it is paid out. Mirrors
- * MIN_WITHDRAWAL_USD on the server, which is what actually enforces it.
- */
 const MIN_WITHDRAWAL = 10;
 
 function messageForError(err: unknown): string {
@@ -59,7 +57,6 @@ export default function WithdrawModal({
   onClose,
 }: {
   open: boolean;
-  /** Supplied by the wallet dialog; a submitted request closes itself. */
   onClose?: () => void;
 }) {
   const { balance } = useGameSocket();
@@ -122,9 +119,6 @@ export default function WithdrawModal({
         body: JSON.stringify({ amount, currency, address: address.trim() }),
       });
 
-      // The confirmation follows the player out of the dialog rather than
-      // living inside it: the funds are already reserved, so there is nothing
-      // left to do here, and the header balance is what they will look at next.
       showToast(
         response.review === false
           ? 'Withdrawal request submitted! Funds are on their way.'
@@ -143,8 +137,6 @@ export default function WithdrawModal({
 
   const setMax = useCallback(() => {
     if (available === null) return;
-    // Trim to 8 dp without rounding up — rounding up would ask for more than
-    // the wallet holds and be rejected.
     const [whole, fraction = ''] = available.split('.');
     setAmount(fraction ? `${whole}.${fraction.slice(0, 8)}` : whole);
     setTouched((prev) => ({ ...prev, amount: true }));
@@ -158,8 +150,12 @@ export default function WithdrawModal({
           <span>
             Your funds will be dispatched shortly.
             {result.review
-              ? ' This request is queued for review — the amount is already reserved from your balance.'
-              : ` ${result.amount} ${result.currency} has been reserved from your balance.`}
+              ? ` $${formatDecimalString(result.amount, 2)} ${result.amountCurrency} is reserved. ${
+                  result.payoutAmount
+                    ? `Estimated payout: ${result.payoutAmount} ${result.currency} at ${formatDecimalString(result.exchangeRateUsdt ?? '1', 2)} USDT per ${result.currency}.`
+                    : `An administrator will determine the ${result.currency} payout amount because a current quote was unavailable.`
+                }`
+              : ` $${formatDecimalString(result.amount, 2)} ${result.amountCurrency} has been reserved. Payout: ${result.payoutAmount} ${result.currency} at ${formatDecimalString(result.exchangeRateUsdt ?? '1', 2)} USDT per ${result.currency}.`}
           </span>
         </div>
 
@@ -197,7 +193,7 @@ export default function WithdrawModal({
 
       <div className="wal__field">
         <label className="wal__label" htmlFor="withdraw-amount">
-          Amount
+          Amount (USD)
         </label>
         <div className="wal__row">
           <input
@@ -246,8 +242,6 @@ export default function WithdrawModal({
       {belowMinimum && touched.amount && (
         <p className="wal__error">{t('wallet.wdBelowMin', { amount: `$${MIN_WITHDRAWAL}` })}</p>
       )}
-      {/* Balance is live, so this shows immediately rather than on blur — the
-          player needs to see it the moment it becomes true. */}
       {exceedsBalance && (
         <p className="wal__error">{t('wallet.wdTooMuch')}</p>
       )}

@@ -1,23 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Cloudflare Turnstile widget
- *
- * Wraps `challenges.cloudflare.com/turnstile/v0/api.js` directly rather than
- * pulling in a React binding: this repo ships no UI dependencies it can write
- * itself, and the whole surface here is render / reset / remove.
- *
- * Rendered **explicitly** (`?render=explicit`) rather than by scanning the DOM
- * for `.cf-turnstile`. Implicit mode gives no handle back, and the forms need
- * one — a token is single-use, so every failed submit has to reset the widget
- * or the next attempt replays a token Cloudflare has already redeemed and will
- * refuse.
- *
- * With no site key configured the component renders nothing and reports an
- * empty token. That matches the server, which bypasses when it has no secret,
- * so a checkout of this repo runs without a Cloudflare account.
- */
-
 import {
 
   forwardRef,
@@ -27,7 +9,6 @@ import {
   useRef,
 } from 'react';
 
-/** Public site key. Empty string when unset, which disables the widget. */
 export const TURNSTILE_SITE_KEY =
   process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? '';
 
@@ -63,7 +44,6 @@ declare global {
 
 let scriptPromise: Promise<void> | null = null;
 
-/** Loads the Cloudflare script once per page, however many widgets mount. */
 function loadTurnstileScript(): Promise<void> {
   if (typeof window === 'undefined') return Promise.resolve();
   if (window.turnstile) return Promise.resolve();
@@ -85,7 +65,6 @@ function loadTurnstileScript(): Promise<void> {
     script.defer = true;
     script.onload = () => resolve();
     script.onerror = () => {
-      // Let a later mount retry rather than caching the failure forever.
       scriptPromise = null;
       reject(new Error('turnstile script failed'));
     };
@@ -96,14 +75,11 @@ function loadTurnstileScript(): Promise<void> {
 }
 
 export interface TurnstileHandle {
-  /** Clears the current token and asks Cloudflare for a fresh challenge. */
   reset: () => void;
 }
 
 export interface TurnstileProps {
-  /** Receives the token, or '' whenever the current one stops being valid. */
   onToken: (token: string) => void;
-  /** Labels the request in the Cloudflare dashboard. */
   action?: string;
   theme?: 'auto' | 'light' | 'dark';
 }
@@ -115,8 +91,6 @@ export const Turnstile = forwardRef<TurnstileHandle, TurnstileProps>(function Tu
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
 
-  // Held in a ref so re-rendering the parent never re-renders the widget:
-  // Turnstile tears down and re-challenges on every render() call.
   const onTokenRef = useRef(onToken);
   onTokenRef.current = onToken;
 
@@ -126,8 +100,6 @@ export const Turnstile = forwardRef<TurnstileHandle, TurnstileProps>(function Tu
       reset: () => {
         if (!widgetIdRef.current || !window.turnstile) return;
         window.turnstile.reset(widgetIdRef.current);
-        // The old token is dead the moment we reset; say so immediately rather
-        // than leaving a spent value in the form's state.
         onTokenRef.current('');
       },
     }),
@@ -143,8 +115,6 @@ export const Turnstile = forwardRef<TurnstileHandle, TurnstileProps>(function Tu
       theme,
       ...(action ? { action } : {}),
       callback: (token) => onTokenRef.current(token),
-      // A token expires after a few minutes. Clearing it is what stops a form
-      // from submitting one Cloudflare will already reject.
       'expired-callback': () => onTokenRef.current(''),
       'timeout-callback': () => onTokenRef.current(''),
       'error-callback': () => onTokenRef.current(''),
@@ -160,8 +130,6 @@ export const Turnstile = forwardRef<TurnstileHandle, TurnstileProps>(function Tu
         if (!cancelled) mountWidget();
       })
       .catch(() => {
-        // Cloudflare unreachable. The form stays usable and submits without a
-        // token; the server decides whether that is acceptable.
         if (!cancelled) onTokenRef.current('');
       });
 

@@ -1,14 +1,3 @@
-/**
- * FRIGAT — Player referral routes
- *
- * Backs the affiliate dashboard: the player's own code, their downline stats,
- * and the sweep of accrued earnings into the wagerable balance.
- *
- * Everything here is scoped to the caller's own token. There is deliberately no
- * `:userId` parameter — an affiliate must not be able to read another
- * affiliate's earnings by guessing an id.
- */
-
 import type { FastifyInstance } from 'fastify';
 import { Prisma, TransactionType, TransactionStatus } from '@prisma/client';
 import { prisma } from '../config/prisma';

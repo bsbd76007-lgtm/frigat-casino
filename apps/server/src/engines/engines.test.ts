@@ -80,7 +80,6 @@ describe('Provably-fair core', () => {
 
 describe('Dice', () => {
   it('UNDER win pays ~ (100/chance)*(1-edge)', () => {
-  // find a nonce that rolls low
   const r = dice.play({ target: 50, direction: 'UNDER' }, ctx(0));
   assert.ok(typeof r.multiplier === 'number');
   const win = dice.play({ target: 99, direction: 'UNDER' }, ctx(0));
@@ -108,7 +107,6 @@ describe('Roulette', () => {
   assert.ok(pocket >= 0 && pocket <= 36);
 });
   it('straight bet pays 36x gross when hit', () => {
-  // brute force a nonce that lands on pocket 17
   for (let n = 0; n < 500; n++) {
     const r = roulette.spin({ bets: [{ position: 'straight:17', amount: '1' }] }, ctx(n));
     if ((r.resultData as any).pocket === 17) {
@@ -139,8 +137,6 @@ describe('Crash', () => {
   assert.ok(cp1 >= 1);
 });
   it('raw instant-bust probability ≈ house edge (1%)', () => {
-  // The *unfloored* formula busts (raw < 1) exactly when u < houseEdge.
-  // Verified directly against calculateOutcome to isolate the model from rounding.
   let rawBusts = 0;
   const N = 20000;
   for (let n = 0; n < N; n++) {
@@ -148,9 +144,6 @@ describe('Crash', () => {
     const raw = (1 - HOUSE_EDGE.CRASH) / (1 - u);
     if (raw < 1) rawBusts++;
   }
-  // A raw draw below 1 is exactly the edge: the fraction of u for which
-  // (1-edge)/(1-u) < 1 is the edge itself. Derived, not hardcoded, so moving
-  // HOUSE_EDGE.CRASH moves this assertion with it.
   const rate = rawBusts / N;
   assert.ok(
     Math.abs(rate - HOUSE_EDGE.CRASH) < 0.004,
@@ -158,13 +151,6 @@ describe('Crash', () => {
   );
 });
   it('effective 1.00x rate = the edge plus the floored [1.00,1.01) band', () => {
-  // Flooring to 2dp collapses the [1.00, 1.01) band onto 1.00x — a house-favouring
-  // rounding that roughly doubles the visible instant-loss rate. Documented, intentional.
-  //
-  // The exact figure falls out of the edge rather than being observed and
-  // written down: cp <= 1 whenever (1-e)/(1-u) < 1.01, i.e. u < 1 - (1-e)/1.01.
-  // At a 1% edge that is 1.98%; at 2.5% it is 3.47%. Deriving it means raising
-  // the edge does not silently break a test that looks like it measures crash.
   let flooredToOne = 0;
   const N = 20000;
   for (let n = 0; n < N; n++) {
@@ -306,7 +292,6 @@ describe('Slots', () => {
     assert.equal(reel.length, SLOTS_ROWS);
     for (const cell of reel) assert.ok(SLOTS_SYMBOLS.includes(cell));
   }
-  // A different nonce must not replay the same screen.
   assert.notDeepEqual(a, slots.spinMatrix(ctx(12)));
 });
   it('spin() is deterministic and reports the matrix it paid on', () => {
@@ -320,13 +305,11 @@ describe('Slots', () => {
   const seen = new Set<SlotSymbol>();
   for (let i = 0; i < 20_000; i += 1) seen.add(slots.symbolAt(i / 20_000));
   assert.equal(seen.size, SLOTS_SYMBOLS.length);
-  // Boundary rolls must stay in range rather than fall off the table.
   assert.ok(SLOTS_SYMBOLS.includes(slots.symbolAt(0)));
   assert.ok(SLOTS_SYMBOLS.includes(slots.symbolAt(0.999999999)));
 });
   it('lines pay left-to-right only, from reel 0', () => {
   const grid = (rows: SlotSymbol[][]): SlotSymbol[][] => rows;
-  // BELL BELL BELL on the middle row.
   const hit = grid([
     ['CHERRY', 'BELL', 'CHERRY'],
     ['LEMON', 'BELL', 'LEMON'],
@@ -340,7 +323,6 @@ describe('Slots', () => {
   assert.equal(win!.count, 3);
   assert.equal(win!.multiplier, SLOTS_PAYTABLE.BELL[3]);
 
-  // The same run starting on reel 1 pays nothing.
   const shifted = grid([
     ['CHERRY', 'LEMON', 'CHERRY'],
     ['LEMON', 'BELL', 'LEMON'],
@@ -396,12 +378,9 @@ describe('Slots', () => {
   const wins = slots.evaluateMatrix(allWild);
   const lineTotal = wins.reduce((sum, w) => sum + w.multiplier, 0);
   assert.equal(lineTotal, SLOTS_PAYTABLE.WILD[5] * SLOTS_PAYLINES.length);
-  // 5 lines × the WILD award, spread over 5 line stakes, is the award itself.
   assert.equal(lineTotal / SLOTS_PAYLINES.length, SLOTS_PAYTABLE.WILD[5]);
 });
   it('paytable is calibrated to the configured house edge', () => {
-  // Exact, not sampled: the cells are i.i.d., so one payline's expected award
-  // *is* the game's RTP, and 8^5 lines enumerate in a few milliseconds.
   const total = SLOTS_SYMBOLS.reduce((sum, s) => sum + SLOTS_WEIGHTS[s], 0);
   const p = (s: SlotSymbol) => SLOTS_WEIGHTS[s] / total;
   const n = SLOTS_SYMBOLS.length;
@@ -432,7 +411,7 @@ describe('Slots', () => {
 });
 
 describe('NOWPayments IPN', () => {
-  it('canonical payload sorts top-level keys only', () => {
+  it('canonical payload sorts keys at every depth, as NOWPayments sortObject does', () => {
   const canonical = canonicalIpnPayload({
     payment_status: 'finished',
     actually_paid: 25,
@@ -441,9 +420,8 @@ describe('NOWPayments IPN', () => {
   });
   assert.equal(
     canonical,
-    '{"actually_paid":25,"nested":{"b":1,"a":2},"payment_id":123,"payment_status":"finished"}'
+    '{"actually_paid":25,"nested":{"a":2,"b":1},"payment_id":123,"payment_status":"finished"}'
   );
-  // Key order in the source object must not change the signed string.
   assert.equal(
     canonical,
     canonicalIpnPayload({
@@ -457,8 +435,6 @@ describe('NOWPayments IPN', () => {
   it('a genuine HMAC-SHA512 signature verifies, a tampered body does not', () => {
   const secret = process.env.NOWPAYMENTS_IPN_SECRET ?? '';
   if (!secret) {
-    // Nothing to verify against without the shared secret; skip rather than
-    // assert on a signature computed with an empty key.
     console.log('    (skipped: NOWPAYMENTS_IPN_SECRET not set)');
     return;
   }
@@ -476,8 +452,6 @@ describe('NOWPayments IPN', () => {
 
   assert.equal(verifyIpnSignature(body, signature), true);
   assert.equal(verifyIpnSignature(body, signature.toUpperCase()), true);
-  // Any change to the body invalidates it — including the amount, which is the
-  // field an attacker would want to inflate.
   assert.equal(verifyIpnSignature({ ...body, price_amount: 2500 }, signature), false);
   assert.equal(verifyIpnSignature(body, 'deadbeef'), false);
   assert.equal(verifyIpnSignature(body, ''), false);
@@ -489,9 +463,7 @@ describe('NOWPayments IPN', () => {
   assert.equal(mapNowPaymentsStatus('finished'), 'PAID');
   assert.equal(mapNowPaymentsStatus('expired'), 'EXPIRED');
   assert.equal(mapNowPaymentsStatus('failed'), 'FAILED');
-  // Deliberately NOT a settled state — half an invoice must not buy a deposit.
   assert.equal(mapNowPaymentsStatus('partially_paid'), 'WRONG_AMOUNT');
-  // An unknown status must never fall through to something that credits.
   assert.equal(mapNowPaymentsStatus('who_knows'), 'PENDING');
   assert.equal(mapNowPaymentsStatus(undefined), 'PENDING');
 });

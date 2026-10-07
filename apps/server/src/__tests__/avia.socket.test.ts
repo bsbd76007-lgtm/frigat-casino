@@ -7,12 +7,6 @@ import { getBalance } from '../services/ledger.service';
 import * as avia from '../engines/avia.engine';
 import { connect, seedPlayer, startServer, type Frame } from './helpers/socket';
 
-/**
- * Avia Masters, end to end: one BET is one whole flight, settled in the same
- * frame. Every flight is replayed from the seed the server committed to, so the
- * balance after each one is asserted exactly.
- */
-
 let app: FastifyInstance;
 let port: number;
 
@@ -35,8 +29,6 @@ describe('avia over the socket', () => {
     let sawLand = false;
     let sawDitch = false;
 
-    // ~14.6% of slow flights land, so 80 rounds miss a landing about once in
-    // 30,000 runs.
     for (let round = 0; round < 80 && !(sawLand && sawDitch); round += 1) {
       p.send('BET', { amount: '5.00', currency: 'USD', params: { mode: 'slow' } });
       const result = await p.next(isResult);
@@ -52,7 +44,6 @@ describe('avia over the socket', () => {
         hashedServerSeed: '',
       }, 'slow');
 
-      // What the client animates is exactly what the seed produces.
       const data = result.data.resultData as { landed: boolean; events: unknown[] };
       expect(data.landed).toBe(flight.landed);
       expect(data.events).toEqual(flight.events);
@@ -89,7 +80,6 @@ describe('avia over the socket', () => {
       true
     );
     expect((result.data.resultData as { landed: boolean }).landed).toBe(true);
-    // The session records everything paid in, fee included.
     expect(session.betAmount.toString()).toBe('5.4');
     const payout = new Prisma.Decimal(stake).mul(flight.payoutMultiplier).toDecimalPlaces(8);
     expect(new Prisma.Decimal(String(result.data.payout)).equals(payout)).toBe(true);

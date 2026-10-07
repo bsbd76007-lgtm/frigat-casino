@@ -54,6 +54,11 @@ jobs:
       - name: Install
         run: npm ci
 
+      # Fails the run on any high or critical advisory in a production
+      # dependency. Dev-only tooling is excluded: it never ships.
+      - name: Audit production dependencies
+        run: npm run audit:prod
+
       # createdb/dropdb, used by the integration harness to build a scratch
       # database per run. The postgres service container ships the server, not
       # the client tools.

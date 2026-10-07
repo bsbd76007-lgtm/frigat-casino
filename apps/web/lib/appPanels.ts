@@ -1,10 +1,5 @@
 'use client';
 
-/**
- * `support` replaced `chat`: the community chat is gone, and the Support
- * control now opens the support ticket panel — the one wired to the queue in
- * /admin/support.
- */
 export type AppPanel = 'deposit' | 'withdraw' | 'support' | 'fairness';
 
 const EVENT = 'frigat:open-panel';

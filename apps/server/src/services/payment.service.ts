@@ -1,34 +1,16 @@
-/**
- * FRIGAT — Cryptomus Payment Service
- *
- * Deposits (invoices) and withdrawals (payouts) against the Cryptomus API.
- *
- * Two rules shape everything here:
- *
- *   1. This service never mutates a balance by hand. Credits and debits go
- *      through ledger.service inside the same $transaction that moves the
- *      gateway row, so a wallet balance can never disagree with the ledger.
- *
- *   2. Webhooks are untrusted input. Cryptomus retries until it receives a 200,
- *      and anyone can POST to a public URL — so every webhook is signature-
- *      checked, and crediting is guarded on `Payment.transactionId IS NULL`.
- *      A replay of a genuine webhook is a no-op, not a second credit.
- *
- * Signing (both directions) is MD5 over base64(body) + apiKey. The payout
- * endpoints are signed with a *different* key to the payment ones.
- */
-
 import { bonusFor, wageringRemaining } from './depositBonus.service';
 import { createHash, timingSafeEqual } from 'crypto';
 import { Prisma, TransactionType, type CryptoPaymentStatus } from '@prisma/client';
 
 import { config } from '../config';
+import { BinancePriceError, getBinanceUsdtAskBook } from './binancePrice.service';
 import {
   NOWPAYMENTS_PROVIDER,
   createNowPayment,
   createPayout,
   NowPaymentsError,
   isPayoutConfigured,
+  isKnownNowPaymentsStatus,
   mapNowPaymentsStatus,
   networkLabelFor,
   payCurrencyFor,
@@ -55,7 +37,6 @@ const DEFAULT_NETWORK: Record<SupportedCurrency, string | undefined> = {
 
 const LEDGER_CURRENCY = 'USD';
 
-/** Marks a withdrawal an operator has to send by hand. */
 export const MANUAL_PROVIDER = 'MANUAL_ADMIN';
 
 export function isSupportedCurrency(value: unknown): value is SupportedCurrency {
@@ -76,18 +57,17 @@ export class PaymentProviderError extends Error {
   constructor(
     message: string,
     readonly status?: number,
-    /**
-     * True when we do not know whether the provider accepted the request — a
-     * timeout or a dropped connection, as opposed to the provider answering
-     * with a refusal. The two must be handled differently on the payout path:
-     * a refusal means the money never left and the hold can be released; an
-     * ambiguous failure means it may already be on its way, and refunding
-     * would pay the player twice.
-     */
     readonly ambiguous = false
   ) {
     super(message);
     this.name = 'PaymentProviderError';
+  }
+}
+
+export class WebhookPayloadError extends Error {
+  constructor(readonly reason: string) {
+    super(`Webhook payload rejected: ${reason}`);
+    this.name = 'WebhookPayloadError';
   }
 }
 
@@ -136,7 +116,6 @@ async function cryptomusRequest<T>(
 
   const rawBody = JSON.stringify(body);
 
-  // A hung payment call must not hold a request open indefinitely.
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), 15_000);
 
@@ -153,8 +132,6 @@ async function cryptomusRequest<T>(
       signal: abort.signal,
     });
   } catch (err) {
-    // Transport failures only. We sent the request and never learned its fate,
-    // so the outcome is unknown — not a refusal.
     if (err instanceof Error && err.name === 'AbortError') {
       throw new PaymentProviderError('payment provider timed out', undefined, true);
     }
@@ -223,21 +200,17 @@ function isPayoutFailure(status: CryptoPaymentStatus): boolean {
 
 export interface CreateDepositInput {
   userId: string;
-  /** Decimal string, validated by the route. */
   amount: string;
   currency: SupportedCurrency;
   network?: string;
 }
 
-/** Deposits are quoted in this and paid in the asset the player picks. */
 const PRICE_CURRENCY = 'USD';
 
 export interface CreateDepositResult {
   paymentId: string;
-  /** Asset amount to send, in `currency`. */
   amount: string;
   currency: string;
-  /** What that is worth, and what the ledger credits on settlement. */
   priceAmount: string;
   priceCurrency: string;
   status: CryptoPaymentStatus;
@@ -251,7 +224,6 @@ interface CryptomusInvoice {
   uuid: string;
   order_id: string;
   amount: string;
-  /** What the payer actually has to send, in `payer_currency`. */
   payer_amount?: string | null;
   payer_currency?: string | null;
   address?: string | null;
@@ -269,7 +241,6 @@ export async function createDeposit(
     throw new Error('payment: deposit amount must be positive');
   }
 
-  // A frozen account must not be able to move money in either direction.
   const account = await prisma.user.findUnique({
     where: { id: input.userId },
     select: { frozen: true },
@@ -285,13 +256,6 @@ export async function createDeposit(
 
   const network = input.network ?? DEFAULT_NETWORK[input.currency];
 
-  // Priced in USD, payable in the chosen asset.
-  //
-  // This used to send `currency: input.currency`, which told Cryptomus the
-  // *price* was 100 BTC — so a "$100" deposit invoiced a hundred bitcoin. The
-  // amount a player types is fiat; `to_currency` is what they pay it in, and
-  // the provider does the conversion at its own live rate. Inventing a rate
-  // here would mean quoting a price the settlement side does not honour.
   const invoice = await cryptomusRequest<CryptomusInvoice>('/payment', {
     amount: amount.toFixed(2),
     currency: PRICE_CURRENCY,
@@ -305,8 +269,6 @@ export async function createDeposit(
   const record = await prisma.payment.create({
     data: {
       userId: input.userId,
-      // The invoice's fiat value — settlement credits this, so it must not be
-      // overwritten with the asset amount shown to the payer.
       amount,
       currency: input.currency,
       status: mapStatus(invoice.status),
@@ -319,11 +281,8 @@ export async function createDeposit(
 
   return {
     paymentId: invoice.uuid,
-    // The asset amount the provider computed, when it gives one. Falling back
-    // to the USD figure would put "100" next to "BTC" again.
     amount: invoice.payer_amount ?? invoice.amount ?? amount.toFixed(2),
     currency: invoice.payer_currency ?? input.currency,
-    /** What the deposit is worth, which is what the ledger credits. */
     priceAmount: amount.toFixed(2),
     priceCurrency: PRICE_CURRENCY,
     status: record.status,
@@ -336,13 +295,6 @@ export async function createDeposit(
   };
 }
 
-/**
- * Opens a NOWPayments invoice and records it.
- *
- * The row is written with `provider: 'NOWPAYMENTS'` so the callback handler can
- * tell later which gateway's rules apply to it — the two disagree about what a
- * partial payment means, and about which field carries the amount to credit.
- */
 async function createNowPaymentsDeposit(
   input: CreateDepositInput,
   amount: Prisma.Decimal,
@@ -366,7 +318,6 @@ async function createNowPaymentsDeposit(
       provider: NOWPAYMENTS_PROVIDER,
       paymentId,
       address: payment.pay_address ?? null,
-      // NOWPayments returns an address to pay, not a hosted checkout page.
       payUrl: null,
     },
     select: { id: true },
@@ -374,8 +325,6 @@ async function createNowPaymentsDeposit(
 
   return {
     paymentId,
-    // NOWPayments already priced in USD (`price_amount`) and returns the asset
-    // amount to send, so only the reporting needed aligning with Cryptomus.
     amount: payment.pay_amount != null ? String(payment.pay_amount) : amount.toFixed(2),
     currency: input.currency,
     priceAmount: amount.toFixed(2),
@@ -433,41 +382,51 @@ export function verifyWebhookSignature(body: Record<string, unknown>): boolean {
   return signaturesMatch(signPayload(serialized, apiKey), sign);
 }
 
-/**
- * Handles a verified NOWPayments IPN.
- *
- * The signature is checked by the route before this is called — this function
- * assumes an authentic body and is not safe to call on an unverified one.
- *
- * Crediting rule: a `finished` invoice credits the USD figure the player asked
- * for (`payment.amount`), never `actually_paid`. NOWPayments reports
- * `actually_paid` in the *pay* currency, so crediting it would push satoshis
- * into a dollar balance. A `partially_paid` invoice is therefore recorded as
- * WRONG_AMOUNT and left for an operator: paying half an invoice must not buy a
- * full deposit, and auto-refunding is not this function's decision to make.
- */
+const PAYMENT_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+const TX_HASH_RE = /^[A-Za-z0-9:_-]{1,256}$/;
+
+function optionalTxHash(raw: unknown): string | null {
+  if (raw === undefined || raw === null || raw === '') return null;
+  if (typeof raw !== 'string' || !TX_HASH_RE.test(raw)) throw new WebhookPayloadError('tx_hash');
+  return raw;
+}
+
+function signedAmount(raw: unknown): Prisma.Decimal | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'number' && typeof raw !== 'string') throw new WebhookPayloadError('amount');
+  const text = String(raw).trim();
+  if (!/^\d+(\.\d+)?$/.test(text)) throw new WebhookPayloadError('amount');
+  return new D(text);
+}
+
 export async function handleNowPaymentsIpn(
   body: Record<string, unknown>
 ): Promise<WebhookResult> {
+  const rawId = body.payment_id;
   const paymentId =
-    typeof body.payment_id === 'string' || typeof body.payment_id === 'number'
-      ? String(body.payment_id)
+    (typeof rawId === 'number' && Number.isSafeInteger(rawId) && rawId > 0) ||
+    (typeof rawId === 'string' && PAYMENT_ID_RE.test(rawId))
+      ? String(rawId)
       : null;
-  if (!paymentId) return { handled: false };
+  if (!paymentId) throw new WebhookPayloadError('payment_id');
 
-  const status = mapNowPaymentsStatus(body.payment_status);
-  const txHash =
-    typeof body.payin_hash === 'string' && body.payin_hash.length > 0
-      ? body.payin_hash
-      : null;
+  if (typeof body.payment_status !== 'string') throw new WebhookPayloadError('payment_status');
+  if (!isKnownNowPaymentsStatus(body.payment_status)) return { handled: false };
+
+  if (
+    body.price_currency !== undefined &&
+    (typeof body.price_currency !== 'string' || body.price_currency.toLowerCase() !== 'usd')
+  ) {
+    throw new WebhookPayloadError('price_currency');
+  }
 
   return settleDeposit({
     provider: NOWPAYMENTS_PROVIDER,
     paymentId,
-    status,
-    txHash,
-    // Credit the invoiced USD price; see the note above.
+    status: mapNowPaymentsStatus(body.payment_status),
+    txHash: optionalTxHash(body.payin_hash),
     creditOverride: null,
+    expectedAmount: signedAmount(body.price_amount),
   });
 }
 
@@ -476,11 +435,15 @@ export async function handleWebhook(
 ): Promise<WebhookResult> {
   if (!verifyWebhookSignature(body)) throw new InvalidSignatureError();
 
-  const uuid = typeof body.uuid === 'string' ? body.uuid : null;
-  if (!uuid) return { handled: false };
+  const uuid = typeof body.uuid === 'string' && PAYMENT_ID_RE.test(body.uuid) ? body.uuid : null;
+  if (!uuid) throw new WebhookPayloadError('uuid');
+  if (typeof body.status !== 'string') throw new WebhookPayloadError('status');
+  if (body.type !== undefined && body.type !== 'payment' && body.type !== 'payout') {
+    throw new WebhookPayloadError('type');
+  }
 
   const status = mapStatus(body.status);
-  const txHash = typeof body.txid === 'string' ? body.txid : null;
+  const txHash = optionalTxHash(body.txid);
 
   if (body.type === 'payout') {
     return handlePayoutWebhook(uuid, status, txHash);
@@ -489,33 +452,11 @@ export async function handleWebhook(
   return handleDepositWebhook(uuid, status, txHash);
 }
 
-// No `body` parameter: the credit is taken from the stored USD invoice, never
-// from the amounts the gateway reports. It used to take one, and that is the
-// whole substance of the bug described below — so the argument is gone rather
-// than underscore-prefixed, to make passing it back in a deliberate act.
 async function handleDepositWebhook(
   uuid: string,
   status: CryptoPaymentStatus,
   txHash: string | null
 ): Promise<WebhookResult> {
-  // The invoice is priced in USD and PAYABLE in the asset — createDeposit sends
-  // `currency: 'USD', to_currency: <asset>` and its comment says settlement
-  // credits the fiat value and "must not be overwritten with the asset amount
-  // shown to the payer". This function used to do exactly that: it passed
-  // `merchant_amount` / `payment_amount` — both denominated in the PAYER's
-  // asset — straight through as the credit.
-  //
-  // A $500 deposit paid in BTC therefore credited a wallet balance of 0.00485
-  // USD, and the invoice was stamped PAID so no retry or later callback could
-  // ever correct it. In USDT the same bug quietly credited ~99 for a 100
-  // invoice, pocketing the provider's commission from the player.
-  //
-  // The credit is now always the stored USD invoice amount. That is safe
-  // against underpayment because only PAID / PAID_OVER / CONFIRMED settle
-  // (isSettled) — a short payment never reaches here. On PAID_OVER the player
-  // is credited what they were invoiced rather than the surplus, which errs in
-  // the house's favour and is the conservative side to err on; refunding an
-  // overpayment is an operator decision, not something to guess in a webhook.
   return settleDeposit({
     provider: 'CRYPTOMUS',
     paymentId: uuid,
@@ -526,42 +467,33 @@ async function handleDepositWebhook(
 }
 
 interface SettleDepositInput {
-  /** Which gateway is reporting, used for the ledger's fallback txHash. */
   provider: string;
   paymentId: string;
   status: CryptoPaymentStatus;
   txHash: string | null;
-  /**
-   * Amount to credit instead of the invoiced figure, when the gateway reports
-   * what actually arrived in the ledger's own currency. Null credits
-   * `payment.amount`.
-   */
   creditOverride: Prisma.Decimal | null;
+  expectedAmount?: Prisma.Decimal | null;
 }
 
-/**
- * The one place a confirmed deposit becomes balance, whichever gateway
- * reported it.
- *
- * Idempotency is the `transactionId IS NULL` guard inside the transaction: both
- * providers retry callbacks until they get a 200, and a redelivery must update
- * the invoice without crediting a second time.
- */
 async function settleDeposit(input: SettleDepositInput): Promise<WebhookResult> {
   const { paymentId, status, txHash } = input;
 
   const payment = await prisma.payment.findUnique({
     where: { paymentId },
-    select: { id: true, userId: true, amount: true, transactionId: true },
+    select: { id: true, userId: true, amount: true, transactionId: true, provider: true },
   });
 
-  // An unknown invoice is not an error worth retrying — 200 it so the provider
-  // stops redelivering, but do not create a payment we never opened.
   if (!payment) return { handled: false };
+  if (payment.provider !== input.provider) throw new WebhookPayloadError('provider');
+  if (input.expectedAmount && !input.expectedAmount.eq(payment.amount)) {
+    throw new WebhookPayloadError('amount_mismatch');
+  }
+
+  if (payment.transactionId) return { handled: true };
 
   const received = input.creditOverride;
 
-  if (!isSettled(status) || payment.transactionId) {
+  if (!isSettled(status)) {
     await prisma.payment.update({
       where: { id: payment.id },
       data: {
@@ -576,8 +508,6 @@ async function settleDeposit(input: SettleDepositInput): Promise<WebhookResult> 
   const creditAmount = received ?? payment.amount;
 
   const outcome = await prisma.$transaction(async (tx) => {
-    // Claim this invoice. `transactionId: null` is the idempotency guard: a
-    // concurrent delivery that already credited leaves count 0 here.
     const claimed = await tx.payment.updateMany({
       where: { id: payment.id, transactionId: null },
       data: {
@@ -613,8 +543,6 @@ async function settleDeposit(input: SettleDepositInput): Promise<WebhookResult> 
         type: TransactionType.DEPOSIT,
         amount: creditAmount,
         status: 'COMPLETED',
-        // Unique per invoice even before a chain hash exists, so the ledger's
-        // unique txHash still blocks a double credit.
         txHash: txHash ?? `${input.provider.toLowerCase()}:${paymentId}`,
       },
       select: { id: true },
@@ -625,9 +553,6 @@ async function settleDeposit(input: SettleDepositInput): Promise<WebhookResult> 
       data: { transactionId: ledgerRow.id },
     });
 
-    // Deposit bonus, in the same transaction: a percentage of the player's
-    // 1st, 2nd and 3rd credited deposits (see depositBonus.service). Keyed on
-    // the payment, so a replayed webhook can never pay it twice.
     const priorDeposits = await tx.payment.count({
       where: { userId: payment.userId, transactionId: { not: null }, id: { not: payment.id } },
     });
@@ -688,7 +613,6 @@ async function handlePayoutWebhook(
         auditWithin: async () => undefined,
       });
     } catch {
-      /* no-op */
     }
   }
 
@@ -704,15 +628,15 @@ export interface CreateWithdrawalInput {
 }
 
 export interface CreateWithdrawalResult {
-  /**
-   * True when no payout gateway was configured and the request is waiting on an
-   * operator. The funds are reserved either way; this only tells the client
-   * whether a machine or a human is going to send them.
-   */
   review?: boolean;
+  reviewReason?: 'conversion_unavailable' | 'provider_unavailable';
   withdrawalId: string;
   status: CryptoPaymentStatus;
   amount: string;
+  amountCurrency: 'USD';
+  payoutAmount: string | null;
+  exchangeRateUsdt: string | null;
+  exchangeRateSource: 'BINANCE' | 'USDT_PEG' | null;
   currency: string;
   address: string;
   balance: string;
@@ -724,41 +648,80 @@ interface CryptomusPayout {
   txid?: string | null;
 }
 
-/**
- * Hands a reserved withdrawal to NOWPayments Mass Payouts.
- *
- * A created batch is "accepted", not "sent" — NOWPayments holds it for 2FA
- * verification — so the row stays PENDING and only moves on when the payout
- * callback says so. If the gateway refuses the batch outright the hold is
- * released, because money reserved against a payout that will never happen is
- * money quietly taken from the player.
- */
+interface WithdrawalQuote {
+  payoutAmount: Prisma.Decimal;
+  exchangeRateUsdt: Prisma.Decimal;
+  exchangeRateSource: 'BINANCE' | 'USDT_PEG';
+}
+
+async function quoteWithdrawal(
+  amount: Prisma.Decimal,
+  currency: SupportedCurrency
+): Promise<WithdrawalQuote> {
+  const exchangeRateSource = currency === 'USDT' ? 'USDT_PEG' : 'BINANCE';
+  let payoutAmount: Prisma.Decimal;
+  let exchangeRateUsdt: Prisma.Decimal;
+
+  if (currency === 'USDT') {
+    payoutAmount = amount;
+    exchangeRateUsdt = new D(1);
+  } else {
+    const asks = await getBinanceUsdtAskBook(currency);
+    let remainingUsdt = amount;
+    payoutAmount = new D(0);
+    let usedPartialLevel = false;
+
+    for (const ask of asks) {
+      const price = new D(ask.price);
+      const levelQuantity = new D(ask.quantity).toDecimalPlaces(8, Prisma.Decimal.ROUND_DOWN);
+      const affordableQuantity = remainingUsdt
+        .dividedBy(price)
+        .toDecimalPlaces(8, Prisma.Decimal.ROUND_DOWN);
+      const quantity = Prisma.Decimal.min(levelQuantity, affordableQuantity);
+      if (quantity.lessThanOrEqualTo(0)) break;
+
+      payoutAmount = payoutAmount.plus(quantity);
+      remainingUsdt = remainingUsdt.minus(quantity.mul(price));
+      if (quantity.lessThan(levelQuantity)) {
+        usedPartialLevel = true;
+        break;
+      }
+    }
+
+    if (remainingUsdt.gt(0) && !usedPartialLevel) {
+      throw new BinancePriceError('Binance order book depth is insufficient for this withdrawal.');
+    }
+    if (payoutAmount.gt(0)) {
+      exchangeRateUsdt = amount.minus(remainingUsdt).dividedBy(payoutAmount);
+    } else {
+      exchangeRateUsdt = new D(0);
+    }
+  }
+
+  if (!exchangeRateUsdt.isFinite() || exchangeRateUsdt.lessThanOrEqualTo(0) || payoutAmount.lessThanOrEqualTo(0)) {
+    throw new BinancePriceError('The withdrawal conversion quote is outside supported precision.');
+  }
+
+  return { payoutAmount, exchangeRateUsdt, exchangeRateSource };
+}
+
 async function dispatchNowPaymentsPayout(
   input: CreateWithdrawalInput,
   amount: Prisma.Decimal,
+  quote: WithdrawalQuote,
   withdrawalId: string,
   reserved: { transactionId: string; balance: string }
 ): Promise<CreateWithdrawalResult> {
-  // The try covers ONLY the provider call. It used to wrap the withdrawal
-  // update as well, so a database error AFTER the batch had been accepted took
-  // the refund path and paid the player on top of a payout NOWPayments was
-  // already holding for 2FA.
   let batch: Awaited<ReturnType<typeof createPayout>>;
   try {
     batch = await createPayout([
       {
         address: input.address,
         currency: payCurrencyFor(input.currency),
-        amount: amount.toFixed(8),
+        amount: quote.payoutAmount.toFixed(8),
       },
     ]);
   } catch (err) {
-    // A NowPaymentsError carries an HTTP status only when the gateway answered.
-    // No status means a timeout or a dropped connection: we do not know whether
-    // the batch was accepted, so the hold stays and a human reconciles. Anything
-    // that is not a NowPaymentsError at all is also treated as unknown — on a
-    // money-out path, assuming the safe-for-us outcome is how players get paid
-    // twice.
     const refused = err instanceof NowPaymentsError && typeof err.status === 'number';
 
     if (!refused) {
@@ -784,12 +747,14 @@ async function dispatchNowPaymentsPayout(
     throw err;
   }
 
-  // Past this point the batch is ACCEPTED. Nothing below may release the hold.
   const leg = batch.withdrawals?.[0];
   const updated = await prisma.withdrawal.update({
     where: { id: withdrawalId },
     data: {
       provider: NOWPAYMENTS_PROVIDER,
+      payoutAmount: quote.payoutAmount,
+      exchangeRateUsdt: quote.exchangeRateUsdt,
+      exchangeRateSource: quote.exchangeRateSource,
       paymentId: leg?.id ?? batch.id,
       status: mapNowPaymentsStatus(leg?.status),
       ...(leg?.hash ? { txHash: leg.hash } : {}),
@@ -801,17 +766,16 @@ async function dispatchNowPaymentsPayout(
     withdrawalId: updated.id,
     status: updated.status,
     amount: amount.toFixed(8),
+    amountCurrency: LEDGER_CURRENCY,
+    payoutAmount: quote.payoutAmount.toFixed(8),
+    exchangeRateUsdt: quote.exchangeRateUsdt.toFixed(12),
+    exchangeRateSource: quote.exchangeRateSource,
     currency: input.currency,
     address: input.address,
     balance: reserved.balance,
   };
 }
 
-/**
- * Smallest withdrawal, in the USD ledger currency. Withdrawals are always
- * entered in USD — the coin is only how it is paid out — so one figure is the
- * minimum for every cryptocurrency.
- */
 export const MIN_WITHDRAWAL_USD = '10';
 
 export class WithdrawalBelowMinimumError extends Error {
@@ -840,8 +804,15 @@ export async function createWithdrawal(
   const remaining = await wageringRemaining(input.userId);
   if (remaining.gt(0)) throw new BonusWageringError(remaining.toFixed(2));
 
-  // Reserve the funds. Throws InsufficientFundsError / AccountFrozenError,
-  // which the route maps to 409s.
+  let quote: WithdrawalQuote | null = null;
+  let conversionUnavailable = false;
+  try {
+    quote = await quoteWithdrawal(amount, input.currency);
+  } catch (err) {
+    if (!(err instanceof BinancePriceError)) throw err;
+    conversionUnavailable = true;
+  }
+
   const reserved = await requestWithdrawal({
     userId: input.userId,
     amount: amount.toFixed(8),
@@ -854,6 +825,13 @@ export async function createWithdrawal(
     data: {
       userId: input.userId,
       amount,
+      ...(quote
+        ? {
+            payoutAmount: quote.payoutAmount,
+            exchangeRateUsdt: quote.exchangeRateUsdt,
+            exchangeRateSource: quote.exchangeRateSource,
+          }
+        : {}),
       currency: input.currency,
       address: input.address,
       network: network ?? null,
@@ -863,22 +841,9 @@ export async function createWithdrawal(
     select: { id: true },
   });
 
-  // ── Dispatch ──
-  //
-  // Three outcomes, in order of preference. The important one is the last:
-  // with no payout gateway configured, the request is *queued*, not refused.
-  // The funds are already reserved and the row is already PENDING, so an
-  // operator can settle it from the admin queue — failing here instead would
-  // mean a platform that takes deposits and cannot pay anyone out.
-  if (isPayoutConfigured()) {
-    return dispatchNowPaymentsPayout(input, amount, record.id, reserved);
-  }
-
-  if (!config.cryptomus.merchantId || !config.cryptomus.payoutApiKey) {
-    // Plan B: no gateway can send this, so an operator will. The funds stay
-    // reserved (the ledger row is a PENDING WITHDRAWAL) and the request is
-    // marked so it surfaces in the admin queue as needing a human, not as a
-    // payout a provider is already working on.
+  const queueForManualReview = async (
+    reviewReason: CreateWithdrawalResult['reviewReason'] = 'provider_unavailable'
+  ) => {
     const queued = await prisma.withdrawal.update({
       where: { id: record.id },
       data: { provider: MANUAL_PROVIDER, status: 'PENDING_ADMIN_REVIEW' },
@@ -889,11 +854,30 @@ export async function createWithdrawal(
       withdrawalId: queued.id,
       status: queued.status,
       amount: amount.toFixed(8),
+      amountCurrency: LEDGER_CURRENCY,
+      payoutAmount: quote?.payoutAmount.toFixed(8) ?? null,
+      exchangeRateUsdt: quote?.exchangeRateUsdt.toFixed(12) ?? null,
+      exchangeRateSource: quote?.exchangeRateSource ?? null,
       currency: input.currency,
       address: input.address,
       balance: reserved.balance,
       review: true,
-    };
+      reviewReason,
+    } satisfies CreateWithdrawalResult;
+  };
+
+  if (!quote) {
+    return queueForManualReview(
+      conversionUnavailable ? 'conversion_unavailable' : 'provider_unavailable'
+    );
+  }
+
+  if (isPayoutConfigured()) {
+    return dispatchNowPaymentsPayout(input, amount, quote, record.id, reserved);
+  }
+
+  if (!config.cryptomus.merchantId || !config.cryptomus.payoutApiKey) {
+    return queueForManualReview();
   }
 
   let payout: CryptomusPayout;
@@ -901,11 +885,11 @@ export async function createWithdrawal(
     payout = await cryptomusRequest<CryptomusPayout>(
       '/payout',
       {
-        amount: amount.toFixed(8),
+        amount: quote.payoutAmount.toFixed(8),
         currency: input.currency,
         address: input.address,
         order_id: `wd_${record.id}`,
-        is_subtract: '1', // the network fee comes out of the payout, not our float
+        is_subtract: '1',
         ...(network ? { network } : {}),
         ...(config.cryptomus.webhookUrl
           ? { url_callback: config.cryptomus.webhookUrl }
@@ -914,23 +898,6 @@ export async function createWithdrawal(
       'payout'
     );
   } catch (err) {
-    // Two very different failures used to land here together.
-    //
-    // A REFUSAL (the provider answered with an error status) means the payout
-    // was never accepted: the hold has no purpose and is released.
-    //
-    // An AMBIGUOUS failure — our 15s abort fires, or the connection drops —
-    // means we never learned the outcome. The provider may have accepted the
-    // payout at 14.8s and be sending the coins right now. Refunding here paid
-    // the player twice: they kept the balance AND received the transfer, and
-    // because `paymentId` was never written the later payout webhook could not
-    // match the row, so the discrepancy was invisible.
-    //
-    // Ambiguous now keeps the funds reserved and parks the request in the
-    // admin queue, which is what PENDING_ADMIN_REVIEW exists for. An operator
-    // reconciles against the provider dashboard and either releases the hold
-    // or completes the payout. Slower for the player, and the only answer that
-    // cannot pay twice.
     const ambiguous = err instanceof PaymentProviderError && err.ambiguous;
 
     if (ambiguous) {
@@ -960,6 +927,9 @@ export async function createWithdrawal(
     where: { id: record.id },
     data: {
       paymentId: payout.uuid,
+      payoutAmount: quote.payoutAmount,
+      exchangeRateUsdt: quote.exchangeRateUsdt,
+      exchangeRateSource: quote.exchangeRateSource,
       status: mapStatus(payout.status),
       ...(payout.txid ? { txHash: payout.txid } : {}),
     },
@@ -970,6 +940,10 @@ export async function createWithdrawal(
     withdrawalId: updated.id,
     status: updated.status,
     amount: amount.toFixed(8),
+    amountCurrency: LEDGER_CURRENCY,
+    payoutAmount: quote.payoutAmount.toFixed(8),
+    exchangeRateUsdt: quote.exchangeRateUsdt.toFixed(12),
+    exchangeRateSource: quote.exchangeRateSource,
     currency: input.currency,
     address: input.address,
     balance: reserved.balance,
@@ -984,6 +958,9 @@ export async function listWithdrawals(userId: string, take = 20) {
     select: {
       id: true,
       amount: true,
+      payoutAmount: true,
+      exchangeRateUsdt: true,
+      exchangeRateSource: true,
       currency: true,
       status: true,
       address: true,
@@ -995,6 +972,9 @@ export async function listWithdrawals(userId: string, take = 20) {
   return rows.map((row) => ({
     ...row,
     amount: row.amount.toFixed(8),
+    amountCurrency: LEDGER_CURRENCY,
+    payoutAmount: row.payoutAmount?.toFixed(8) ?? null,
+    exchangeRateUsdt: row.exchangeRateUsdt?.toFixed(12) ?? null,
     createdAt: row.createdAt.toISOString(),
   }));
 }

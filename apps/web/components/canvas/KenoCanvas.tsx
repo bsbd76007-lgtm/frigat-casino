@@ -31,27 +31,17 @@ export interface KenoCanvasProps {
   tileCount: number;
   columns?: number;
   picks: number[];
-  /** Drawn numbers already turned — the page reveals them one at a time. */
   drawn: number[];
-  /** False while a draw is running, so picks cannot change mid-reveal. */
   interactive: boolean;
   onToggle(tile: number): void;
-  /** Translated board name for assistive tech; the status is appended to it. */
   ariaLabel?: string;
   height?: number;
   className?: string;
 }
 
 const THEME = TABLES.keno;
-/** A pick: bright cyan, deep enough to carry white numerals. */
 const PICKED = '#0e8fb3';
-/** A drawn number nobody picked: wine red, so a miss still reads as drawn. */
 const DRAWN = '#6b2c40';
-/**
- * Untouched tiles take their row's colour — five rich, dark hues top to bottom,
- * so the board reads as colour rather than as a grey slab, while every one is
- * still dark enough to keep the numerals and the picks standing out.
- */
 const ROW_COLOURS = ['#1f4a7a', '#24407f', '#3a3683', '#4a2f7c', '#5a2b6e'] as const;
 const rowColour = (tile: number, columns: number) =>
   ROW_COLOURS[Math.floor(tile / columns) % ROW_COLOURS.length];
@@ -92,8 +82,6 @@ export function KenoCanvas({
     [drawnSet, pickSet]
   );
 
-  // Only a draw animates. A pick is a click and should answer instantly, so it
-  // is not recorded here.
   useEffect(() => {
     const turned = turnedAtRef.current;
     const now = performance.now();
@@ -141,15 +129,12 @@ export function KenoCanvas({
             const eased = 1 - Math.pow(1 - t, 3);
             const from = state === 'hit' ? THICKNESS.picked : THICKNESS.idle;
             const to = state === 'hit' ? THICKNESS.hit : THICKNESS.drawn;
-            // A hit overshoots on the way up — the only tile that celebrates.
             const overshoot =
               state === 'hit' && !reducedMotion ? Math.sin(t * Math.PI) * 5 : 0;
             thickness = from + (to - from) * eased + overshoot;
           }
 
           const box = grid.boxOf(tile, { thickness });
-          // A drawn miss settles almost flush — pressed; everything else
-          // stands proud of the surface.
           const lift = state === 'drawn' ? 0.3 : isHovered ? 1.3 : 1;
           drawBox(ctx, scene, box, tileFaces(state, isHovered, rowColour(tile, columns)), lift);
 
@@ -244,7 +229,6 @@ function tileFaces(state: KenoTileState, hovered: boolean, idle: string) {
     case 'hit':
       return faces(GOLD, { top: GOLD_SOFT });
     case 'drawn':
-      // A miss is still information: lighter than an untouched tile, but flat.
       return faces(DRAWN);
     default:
       return faces(hovered ? shade(idle, 0.18) : idle);

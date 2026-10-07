@@ -1,14 +1,3 @@
-/**
- * Chicken Road — injected stylesheet.
- *
- * This project ships no utility CSS framework, so the board carries its own
- * rules and `useInjectedStyles` mounts them once per page.
- */
-
-// ─────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────
-
 export const STYLE_ID = 'fg-chicken-road-styles';
 
 export const CSS = `
@@ -20,20 +9,12 @@ export const CSS = `
   .chr { flex-direction: row; align-items: flex-start; justify-content: center; }
 }
 
-/* ── Canvas ────────────────────────────────────────── */
-/* Horizontal board: the crossing reads left → right, so the stage is wider
-   than it is tall. */
-/* --chr-chick-x / --chr-chick-y follow the sprite so its hit target rides
-   along with it; the render loop writes them every frame. */
 .chr__stage { position: relative; width: 100%; max-width: 700px; min-width: 0;
   aspect-ratio: 3 / 2; background: #7c8b9e; border: 4px solid #e5a059;
   border-radius: var(--fg-r-lg); overflow: hidden;
   --chr-chick-x: 0px; --chr-chick-y: 0px; }
-/* One canvas: road, covers, barriers, cars and the chicken are all painted
-   into it, back to front — see the renderer in ChickenRoad.tsx. */
 .chr__canvas { display: block; width: 100%; height: 100%; }
 
-/* The chicken itself is the step control: a hit target pinned to the sprite. */
 .chr__chick { position: absolute; left: var(--chr-chick-x); top: var(--chr-chick-y);
   width: 76px; height: 76px; margin: -38px 0 0 -38px; padding: 0;
   background: transparent; border: 0; border-radius: var(--fg-r-pill); cursor: pointer;
@@ -49,25 +30,16 @@ export const CSS = `
 
 .chr__hud { position: absolute; left: 12px; right: 12px; top: 12px; display: flex;
   justify-content: space-between; gap: 8px; pointer-events: none; }
-/* Dark glass rather than the old light pill: the panel below is #121c24, and
-   a white chip was the one light surface in the component. Translucent dark
-   over the grey-blue road keeps contrast well past 4.5:1 for both the label
-   and the value, which a light pill did not manage against the pale verges. */
 .chr__chip { display: flex; flex-direction: column; gap: 1px; min-width: 84px;
   padding: 6px 8px; background: rgba(11, 20, 27, .72); border: 1px solid rgba(148, 163, 184, .18);
   border-radius: var(--fg-r-lg); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .chr__chip--profit { text-align: right; }
-/* Label / value pair, matching the panel: slate-300 label, white value. */
 .chr__chip i { font-size: 9.5px; font-weight: 700; font-style: normal;
   letter-spacing: .1em; text-transform: uppercase; color: var(--fg-muted); }
 .chr__chip b { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums;
   letter-spacing: -.01em; color: #fff; }
 .chr__chip--profit b { color: var(--fg-gold); }
 
-/* ── Panel ─────────────────────────────────────────── */
-/* A game panel, not a form: difficulty on a segmented track, the stake with
-   quick amounts, two live readouts, and the actions at the foot. Flat colours
-   only — no gradients anywhere. */
 .chr__panel { display: flex; flex-direction: column; gap: 16px; width: 100%;
   max-width: 700px; min-width: 0; flex: 0 0 auto; padding: 16px; box-sizing: border-box;
   background: var(--fg-panel); border: 1px solid var(--fg-line); border-radius: 16px; }
@@ -78,7 +50,6 @@ export const CSS = `
   text-transform: uppercase; color: var(--fg-dim); }
 .chr__label b { font-size: 12px; font-weight: 800; letter-spacing: .02em; color: var(--fg-gold); }
 
-/* ── Difficulty: a segmented track ── */
 .chr__modes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 4px;
   background: var(--fg-sunken); border: 1px solid var(--fg-line); border-radius: 12px; }
 .chr__mode { display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -96,7 +67,6 @@ export const CSS = `
   background: var(--fg-accent-deep); }
 .chr__mode--on .chr__mode-max { color: var(--fg-on-accent); opacity: .85; }
 
-/* ── Stake ── */
 .chr__bet { display: flex; gap: 6px; }
 .chr__field { position: relative; flex: 1 1 auto; min-width: 0; }
 .chr__cur { position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
@@ -124,7 +94,6 @@ export const CSS = `
 .chr__quick button:disabled { opacity: .45; cursor: not-allowed; }
 .chr__quick button:focus-visible { outline: none; box-shadow: var(--fg-ring); }
 
-/* ── Live readouts ── */
 .chr__stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .chr__stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px;
   background: var(--fg-sunken); border: 1px solid var(--fg-line); border-radius: 12px; }
@@ -135,8 +104,6 @@ export const CSS = `
 .chr__stat small { font-size: 11px; font-weight: 600; color: var(--fg-muted); }
 .chr__stat--gold b { color: var(--fg-gold); }
 
-/* Touch targets: every control above is at least 44px tall on a coarse
-   pointer; the segmented track grows rather than overlaying its neighbours. */
 @media (pointer: coarse) {
   .chr__mode { min-height: 44px; }
   .chr__quick button { height: 40px; }
@@ -150,7 +117,6 @@ export const CSS = `
   border: 1px solid color-mix(in srgb, var(--fg-pos) 40%, transparent); }
 .chr__error { margin: 0; font-size: 12px; font-weight: 600; color: #d69199; text-align: center; }
 
-/* ── Actions ── */
 .chr__actions { display: flex; gap: 8px; }
 .chr__action { flex: 1 1 0; min-width: 0; height: 52px; padding: 0 10px; font-family: inherit;
   font-size: 17px; font-weight: 900; color: var(--fg-on-accent); background: var(--fg-accent-deep);

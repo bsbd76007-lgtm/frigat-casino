@@ -1,17 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — /architecture, client half.
- *
- * Split out of page.tsx for the same reason as RulesContent: `metadata` is a
- * server-component export, `t()` needs the client-side LanguageProvider, and
- * one file cannot be both.
- *
- * Every claim here is one the codebase actually holds to. Every game on the
- * platform is server-decided; if one ever is not, it gets called out on this
- * page rather than quietly included in "server-decided".
- */
-
 import Link from 'next/link';
 
 import { useLanguage } from '@/components/providers/LanguageProvider';
@@ -19,8 +7,6 @@ import { useLanguage } from '@/components/providers/LanguageProvider';
 export function ArchitectureContent() {
   const { t } = useLanguage();
 
-  // Built inside the component so the labels re-read on a locale switch; a
-  // module-level constant would freeze whichever language rendered first.
   const steps = [
     { x: 8, title: t('arch.step1'), line1: t('arch.step1a'), line2: t('arch.step1b') },
     { x: 200, title: t('arch.step2'), line1: t('arch.step2a'), line2: t('arch.step2b') },

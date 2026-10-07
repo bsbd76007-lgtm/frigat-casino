@@ -1,19 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Affiliate dashboard
- *
- * Shows the player's own referral link, their downline stats, and lets them
- * sweep accrued RevShare earnings into their wagerable balance.
- *
- * Data comes from /api/referrals/me, which is scoped to the bearer token — the
- * page never asks for a user id, so there is nothing to tamper with.
- *
- * Money is rendered straight from the API's decimal strings via the BigInt
- * helpers in lib/decimal; parsing earnings into a float would reintroduce the
- * drift the Decimal(18,8) schema exists to prevent.
- */
-
 import { useCallback, useEffect, useState } from 'react';
 
 import { useGameSocket } from '@/components/providers/GameSocketProvider';
@@ -162,7 +148,6 @@ export default function ReferralsPage() {
         </p>
       </header>
 
-      {/* ── Referral link ── */}
       <section className="ref__panel">
         <span className="ref__legend">{t('referrals.yourLink')}</span>
         <div className="ref__linkrow">
@@ -183,7 +168,6 @@ export default function ReferralsPage() {
         </p>
       </section>
 
-      {/* ── Stats ── */}
       <section className="ref__grid">
         <div className="ref__stat">
           <span>{t('referrals.totalInvited')}</span>
@@ -210,7 +194,6 @@ export default function ReferralsPage() {
         </div>
       </section>
 
-      {/* ── Claim ── */}
       <section className="ref__panel">
         <span className="ref__legend">{t('referrals.claim')}</span>
         <p className="ref__note">

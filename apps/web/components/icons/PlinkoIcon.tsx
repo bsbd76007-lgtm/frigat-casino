@@ -55,7 +55,6 @@ export function PlinkoIcon({ size = 40, title, ...rest }: GameIconProps) {
         </filter>
       </defs>
 
-      {/* The path the ball took to get here. */}
       <path
         d="M24 6v4.5l-3.6 5 3.6 5-4 5"
         fill="none"
@@ -78,7 +77,6 @@ export function PlinkoIcon({ size = 40, title, ...rest }: GameIconProps) {
         />
       ))}
 
-      {/* The live ball, mid-bounce off the third row. */}
       <circle cx="20" cy="30.5" r="2.9" fill="#e0b055" filter={`url(#${glow})`} />
       <circle cx="19.2" cy="29.7" r="1" fill="#e9fff8" />
 

@@ -26,17 +26,11 @@ const THEME = TABLES.dice;
 export type DiceDirection = 'OVER' | 'UNDER';
 
 export interface DiceCanvasProps {
-  /** 1–99. The line the roll is compared against. */
   target: number;
   direction: DiceDirection;
-  /**
-   * The settled roll and an id that changes per round. A new id is what starts
-   * the slide, so re-rolling the same number still animates.
-   */
   roll: number | null;
   rollId: string | null;
   won: boolean | null;
-  /** Called once the marker has finished settling on the roll. */
   onRollComplete?: () => void;
   height?: number;
   className?: string;
@@ -46,14 +40,6 @@ const SLIDE_MS = 520;
 const TRACK_H = 16;
 const TICKS = [0, 25, 50, 75, 100];
 
-/**
- * A flat rail: the range from 0 to 100, the paying side of the line filled, and
- * a marker that slides to where the roll landed.
- *
- * Deliberately not staged in 3D. The only question this board answers is "which
- * side of the line did the number fall on", and a camera puts perspective
- * between the player and a comparison they should be able to make at a glance.
- */
 export function DiceCanvas({
   target,
   direction,
@@ -66,7 +52,6 @@ export function DiceCanvas({
 }: DiceCanvasProps) {
   const reducedMotion = usePrefersReducedMotion();
 
-  /** Where the marker stands, so the next roll slides from here. */
   const markerRef = useRef(50);
   const slideRef = useRef<{ from: number; to: number; startedAt: number; done: boolean } | null>(
     null
@@ -85,7 +70,6 @@ export function DiceCanvas({
   const draw = useMemo(
     () =>
       ({ ctx, width, height: h }: CanvasFrame) => {
-        // The board paints its own surface so the rail can be pressed into it.
         ctx.fillStyle = THEME.surface;
         ctx.fillRect(0, 0, width, h);
 
@@ -113,9 +97,6 @@ export function DiceCanvas({
         const outcome = settled && won !== null ? (won ? POS : NEG) : null;
         const trackY = h * 0.52;
 
-        // The rail. The losing side stays a flat neutral: it is the ground the
-        // paying side is measured against, not a second signal competing with it.
-        // The rail is a groove pressed into the surface.
         const rail = roundRectPath(left, trackY - TRACK_H / 2, span, TRACK_H, TRACK_H / 2);
         neuInset(ctx, rail, shade(THEME.surface, -0.18), 0.6);
 
@@ -129,7 +110,6 @@ export function DiceCanvas({
           ctx.restore();
         }
 
-        // Scale, under the rail.
         ctx.font = `600 11px ${FONT.num}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
@@ -145,8 +125,6 @@ export function DiceCanvas({
           ctx.fillText(String(tick), x, trackY + TRACK_H / 2 + 13);
         }
 
-        // The line the player set, drawn through the rail so it reads as the
-        // boundary rather than as another marker on it.
         const lineX = Math.round(at(target)) + 0.5;
         ctx.strokeStyle = BOARD.text;
         ctx.lineWidth = 2;
@@ -163,7 +141,6 @@ export function DiceCanvas({
           trackY - TRACK_H / 2 - 11
         );
 
-        // The marker and its readout.
         const markerX = at(marker);
         const tint = outcome ?? BOARD.text;
 
@@ -172,8 +149,6 @@ export function DiceCanvas({
         const bubbleX = Math.min(right - bubbleW / 2, Math.max(left + bubbleW / 2, markerX));
         const bubbleY = trackY - TRACK_H / 2 - 62;
 
-        // The readout sits on a plate raised out of the surface; the outcome
-        // colours its edge once the roll settles.
         const plate = roundRectPath(bubbleX - bubbleW / 2, bubbleY, bubbleW, bubbleH, 10);
         neu(ctx, () => {
           ctx.fillStyle = THEME.surface;
@@ -191,7 +166,6 @@ export function DiceCanvas({
         ctx.textBaseline = 'middle';
         ctx.fillText((settled && roll !== null ? roll : marker).toFixed(2), bubbleX, bubbleY + bubbleH / 2);
 
-        // Stem down to the rail, then the pin itself.
         ctx.strokeStyle = alpha(tint, 0.45);
         ctx.lineWidth = 1.5;
         ctx.beginPath();

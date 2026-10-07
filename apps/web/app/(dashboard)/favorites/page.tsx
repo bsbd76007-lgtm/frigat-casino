@@ -9,13 +9,6 @@ import { useLanguage } from '@/components/providers/LanguageProvider';
 import { useFavorites } from '@/context/FavoritesContext';
 import type { CatalogueEntry } from '@/lib/gameCatalogue';
 
-/**
- * /favorites
- *
- * Sits in the (dashboard) group so it keeps the navbar, sidebar and sign-in
- * gate; the parenthesised segment is a layout group, so the URL is still
- * /favorites.
- */
 export default function FavoritesPage() {
   const { t } = useLanguage();
   const { favoriteGames } = useFavorites();

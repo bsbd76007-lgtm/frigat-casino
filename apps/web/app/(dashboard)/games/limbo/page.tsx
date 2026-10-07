@@ -17,7 +17,6 @@ const QUICK_TARGETS = [1.5, 2, 5, 10, 100];
 
 interface Round extends LimboRound {
   payout: string | null;
-  /** The target the server settled against, not whatever the input says now. */
   settledTarget: number;
 }
 
@@ -35,7 +34,6 @@ export default function LimboPage() {
   const [round, setRound] = useState<Round | null>(null);
   const [complete, setComplete] = useState(false);
 
-  /** Ids the board can compare: rolling the same multiplier twice must animate. */
   const roundSeq = useRef(0);
 
   const target = useMemo(() => {
@@ -46,10 +44,6 @@ export default function LimboPage() {
 
   const winChance = useMemo(() => ((1 - LIMBO_EDGE) / target) * 100, [target]);
 
-  // autoSettle is off: the controls stay locked for the whole count-up, not just
-  // until the server answers, so a second bet cannot land mid-rollout. The
-  // count-up itself belongs to the board — running it as React state meant a
-  // re-render of the page on every one of its frames.
   const { busy, bet, settle } = useGameRound<{
     achievedMultiplier?: number;
     targetMultiplier?: number;

@@ -1,27 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Slot machine (5 reels × 3 rows, 5 fixed paylines)
- *
- * The spin is decided by the server before a reel stops. `POST /api/games/slots/spin`
- * debits the stake, resolves the matrix from the committed seed, credits the win
- * and logs the round; this component receives that finished matrix and animates
- * the reels *onto* it. Nothing here decides an outcome, and nothing here moves
- * money — the reels are choreography over a settled result.
- *
- * Because of that, the animation is free to take as long as it likes. The
- * request is fired the moment SPIN is pressed and the reels keep spinning until
- * both a minimum spin time has elapsed and the response has landed, so a fast
- * server does not produce a stutter and a slow one just spins a little longer.
- *
- * Balance: the header reads `useBalance`, which only ever updates from socket
- * frames. The spin route pushes a BALANCE frame after settling, so the header
- * follows automatically — this component deliberately has no way to write a
- * balance, and treats the `newBalance` in the response as display only.
- *
- * Styling is injected CSS: this project ships no utility CSS framework.
- */
-
 import { useCallback, useMemo, useRef, useState } from 'react';
 
 import {
@@ -74,22 +52,14 @@ import {
 } from './slotMachine/symbols';
 import { CSS, STYLE_ID } from './slotMachine/styles';
 
-// The sound and response types were part of this file before it was split three
-// ways; re-exported so nothing that reached for them here has to move.
 export type { SlotSounds, SlotSpinResponse } from './slotMachine/choreography';
 
 
-// ─────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────
-
 type Phase = 'IDLE' | 'SPINNING' | 'RESULT';
 
-/** Shared so the panel can tell this failure apart and offer a deposit. */
 const INSUFFICIENT = 'Not enough balance for this bet';
 
 export interface SlotMachineProps {
-  /** Swap in real audio; omit to use the built-in synthesised blips. */
   sounds?: Partial<SlotSounds>;
 }
 
@@ -103,7 +73,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
   const [phase, setPhase] = useState<Phase>('IDLE');
   const [result, setResult] = useState<SlotSpinResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** Set when the spin failed for want of funds, so the panel offers a deposit. */
   const [needsFunds, setNeedsFunds] = useState(false);
   const [soundOn, setSoundOn] = useState(false);
 
@@ -115,8 +84,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
   const audioRef = useRef(audio);
   audioRef.current = audio;
 
-  // Reel state lives in a ref: the render loop mutates it every frame and must
-  // never restart, and none of it belongs in React's update cycle.
   const reelsRef = useRef<Reel[]>(
     Array.from({ length: SLOTS_REELS }, () => ({
       strip: makeStrip(),
@@ -132,26 +99,15 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
   const spinStartedAtRef = useRef(0);
   const winCellsRef = useRef<Array<{ cells: Array<[number, number]>; lineIndex: number }>>([]);
   const resolvedAtRef = useRef<number | null>(null);
-  /** Set once every reel has come to rest, so the flash and sound fire once. */
   const settledRef = useRef(true);
   const pendingResultRef = useRef<SlotSpinResponse | null>(null);
 
   const balance = wallet.balance;
   const busy = phase === 'SPINNING';
 
-  /**
-   * The stake as a value the decimal helpers can actually take.
-   *
-   * `bet` is whatever is in the field, including the half-typed states a player
-   * passes through — `""` while clearing it, `"1."` on the way to `"1.5"`.
-   * `compareDecimal` throws on those, and thrown from this `useMemo` it took
-   * the whole board down instead of showing a validation message.
-   */
   const safeBet = useMemo(() => safeDecimal(bet, BET_LIMITS.min), [bet]);
 
   const betError = useMemo(() => {
-    // An empty or unparseable field is "not ready", not "invalid": the player
-    // is mid-edit and does not need to be told off for it.
     if (!isDecimalString(bet.trim())) return null;
     if (compareDecimal(safeBet, BET_LIMITS.min) < 0) {
       return `Minimum bet is ${formatDecimalString(BET_LIMITS.min, 2)}`;
@@ -159,15 +115,12 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
     if (compareDecimal(safeBet, BET_LIMITS.max) > 0) {
       return `Maximum bet is ${formatDecimalString(BET_LIMITS.max, 2)}`;
     }
-    // Digit-wise against the ledger's own string; parsing to a number here is
-    // exactly the float drift the Decimal column exists to avoid.
     if (balance !== null && compareDecimal(safeBet, balance) > 0) {
       return INSUFFICIENT;
     }
     return null;
   }, [bet, safeBet, balance]);
 
-  /** True only when the field holds a stake that can actually be wagered. */
   const betReady = useMemo(
     () => isDecimalString(bet.trim()) && betError === null,
     [bet, betError]
@@ -178,17 +131,11 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
     return compareDecimal(balance, BET_LIMITS.max) < 0 ? balance : BET_LIMITS.max;
   }, [balance]);
 
-  /**
-   * Quick-adjust and blur both land here. The value is clamped to the table
-   * limits and shown to 2dp so the field always reads like money, while the
-   * arithmetic behind it stays exact BigInt decimal work.
-   */
   const adjust = useCallback((next: string) => {
     const clamped = clampDecimal(next, BET_LIMITS.min, BET_LIMITS.max);
     setBet(toFixedDecimal(clamped, 2));
   }, []);
 
-  // ── Spin ───────────────────────────────────
   const spin = useCallback(async () => {
     if (busy || !betReady) return;
 
@@ -212,17 +159,11 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
     audioRef.current.onSpinStart();
 
     try {
-      // No leading slash: apiFetch resolves a bare path against API_URL, while
-      // an absolute one would post to the Next origin instead of the API.
       const response = await apiJson<SlotSpinResponse>('api/games/slots/spin', {
         method: 'POST',
-        // A decimal string, never Number(bet): the ledger is Decimal(18,8).
         body: JSON.stringify({ betAmount: toFixedDecimal(safeDecimal(bet, BET_LIMITS.min), 2) }),
       });
 
-      // Write the settled matrix into each strip at the cell the reel will land
-      // on, then schedule the staggered stops. The reels are still turning, so
-      // the player never sees the write.
       const readyAt = Math.max(
         performance.now(),
         spinStartedAtRef.current + TIMING.minSpinMs
@@ -240,19 +181,12 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
 
       pendingResultRef.current = response;
     } catch (err) {
-      // A dead session is not something the player can fix from here: clear it
-      // and hand off to sign-in rather than showing a red toast they can only
-      // retry into another 401.
       if (consumedAsSessionExpiry(err)) return;
 
-      // The stake is only debited on a 2xx; a rejected spin leaves the wallet
-      // untouched, so the reels just coast to a stop on nothing.
       const message =
         err instanceof ApiError
           ? err.message
           : 'Could not reach the game server — no bet was placed';
-      // 402 is the ledger refusing the stake: there is no demo balance to fall
-      // back on, so the only useful next step is a deposit.
       if (err instanceof ApiError && err.status === 402) setNeedsFunds(true);
       setError(message);
       setPhase('IDLE');
@@ -265,7 +199,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
     }
   }, [busy, betError, bet]);
 
-  // ── Renderer ───────────────────────────────
   const draw = useCallback(({ ctx, width, height, delta }: CanvasFrame) => {
     const now = performance.now();
     const dt = Math.min(delta, 50) / 1000;
@@ -274,13 +207,11 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
     const cellH = height / SLOTS_ROWS;
     const symbolSize = Math.min(cellW, cellH) * 0.78;
 
-    // ── Reel physics ──
     let allStopped = true;
     for (const reel of reelsRef.current) {
       switch (reel.phase) {
         case 'accelerating': {
           const t = Math.min(1, (now - spinStartedAtRef.current) / TIMING.accelerateMs);
-          // Quadratic ramp: the reel leans into the spin instead of snapping to speed.
           reel.velocity = TIMING.topSpeed * t * t;
           if (t >= 1) reel.phase = 'spinning';
           reel.offset += reel.velocity * dt;
@@ -293,8 +224,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
             reel.phase = 'settling';
             reel.settleStartedAt = now;
             reel.settleFrom = reel.offset;
-            // Land on the next occurrence of the target cell that is far enough
-            // ahead to keep the settle moving forwards.
             const cycles = Math.ceil(
               (reel.offset + SETTLE_TRAVEL - reel.settleTo) / STRIP_LENGTH
             );
@@ -323,7 +252,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
       }
     }
 
-    // Every reel has come to rest: publish the result exactly once.
     if (allStopped && !settledRef.current) {
       settledRef.current = true;
       const pending = pendingResultRef.current;
@@ -340,7 +268,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
       }
     }
 
-    // ── Board ──
     ctx.fillStyle = '#070b11';
     ctx.fillRect(0, 0, width, height);
 
@@ -352,15 +279,11 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
       const reel = reelsRef.current[reelIndex];
       const x = reelIndex * cellW;
 
-      // Reel backing, so each column reads as its own drum.
       ctx.fillStyle = reelIndex % 2 === 0 ? '#0d141c' : '#101922';
       ctx.fillRect(x, 0, cellW, height);
 
       const fractional = reel.offset - Math.floor(reel.offset);
       const base = Math.floor(reel.offset);
-      // Motion blur: at speed, each symbol is smeared into ghosts along the
-      // travel axis rather than drawn once — cheap, and it reads correctly
-      // because the ghosts are the same sprite the reel is carrying.
       const blur = Math.min(1, Math.abs(reel.velocity) / TIMING.topSpeed);
       const ghosts = blur > 0.04 ? Math.round(2 + blur * 5) : 1;
 
@@ -369,8 +292,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
       ctx.rect(x, 0, cellW, height);
       ctx.clip();
 
-      // One row of overdraw top and bottom keeps symbols entering and leaving
-      // the window instead of appearing at its edge.
       for (let row = -1; row <= SLOTS_ROWS; row += 1) {
         const symbol = reel.strip[(base + row + STRIP_LENGTH * 2) % STRIP_LENGTH];
         if (!symbol) continue;
@@ -398,12 +319,10 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
       }
       ctx.restore();
 
-      // Column separator.
       ctx.fillStyle = 'rgba(148,163,184,.14)';
       ctx.fillRect(x + cellW - 1, 0, 1, height);
     }
 
-    // ── Winning paylines: glowing neon/gold overlay ──
     if (winCellsRef.current.length && resolvedAtRef.current !== null) {
       const age = now - resolvedAtRef.current;
       const pulse = 0.55 + 0.45 * Math.sin(age / 190);
@@ -422,8 +341,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
 
-        // The path is drawn across the whole line; the cells that actually paid
-        // get a frame, so a 3-of-5 win still reads as "these three".
         ctx.beginPath();
         rows.forEach((row, reelIndex) => {
           const px = reelIndex * cellW + cellW / 2;
@@ -447,7 +364,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
           ctx.stroke();
         }
 
-        // Line number in the left margin of its own row.
         ctx.globalAlpha = 0.9;
         ctx.shadowBlur = 0;
         ctx.fillStyle = colour;
@@ -459,7 +375,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
       });
     }
 
-    // ── Row guides ──
     ctx.strokeStyle = 'rgba(148,163,184,.1)';
     ctx.lineWidth = 1;
     for (let row = 1; row < SLOTS_ROWS; row += 1) {
@@ -477,7 +392,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
 
   return (
     <div className="slot neu">
-      {/* ---------- Cabinet ---------- */}
       <div className="slot__cabinet">
         <div className="slot__marquee">
           <h2 className="slot__title">{t('gameUi.slotsTitle')}</h2>
@@ -501,7 +415,6 @@ export default function SlotMachine({ sounds }: SlotMachineProps = {}) {
         </div>
       </div>
 
-      {/* ---------- Controls ---------- */}
       <div className="slot__panel">
         <div>
           <label className="slot__label" htmlFor="slot-bet">

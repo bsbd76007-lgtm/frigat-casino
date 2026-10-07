@@ -1,7 +1,6 @@
 import { useId } from 'react';
 import type { GameIconProps } from '@/components/icons/types';
 
-/** Three reels behind glass, the middle one showing the win row. */
 const REELS = [
   { x: 8, symbol: '7', lit: true },
   { x: 20, symbol: '7', lit: true },
@@ -45,7 +44,6 @@ export function SlotsIcon({ size = 40, title, ...rest }: GameIconProps) {
         strokeWidth="1.2"
       />
 
-      {/* Reel window */}
       <rect x="7" y="14" width="34" height="20" rx="3" fill="#05080d" />
 
       {REELS.map((reel) => (
@@ -65,10 +63,8 @@ export function SlotsIcon({ size = 40, title, ...rest }: GameIconProps) {
         </g>
       ))}
 
-      {/* Payline across the win row */}
       <path d="M7 24h34" stroke="var(--fg-accent)" strokeWidth="1.2" opacity=".75" />
 
-      {/* Lever */}
       <circle cx="44" cy="16" r="2.6" fill="#e5484d" />
       <path d="M44 18v7" stroke="#94a3b8" strokeWidth="1.6" strokeLinecap="round" />
     </svg>

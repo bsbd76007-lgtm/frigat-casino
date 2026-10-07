@@ -4,7 +4,7 @@ import type { EngineResult, SeedContext } from '../types/engine.types';
 
 export interface RouletteBet {
   position: string;
-  amount: string; // decimal string
+  amount: string;
 }
 
 export interface RouletteParams {

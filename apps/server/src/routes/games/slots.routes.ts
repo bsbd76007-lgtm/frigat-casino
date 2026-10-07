@@ -1,30 +1,3 @@
-/**
- * FRIGAT — Slots REST route
- *
- * POST /api/games/slots/spin — authenticated, server-authoritative, one spin.
- *
- * ── Why this one is REST when the others are not ───────────────────────────
- * Every other instant game settles over the authenticated WebSocket (see
- * limbo.routes.ts for the reasoning). Slots is reachable both ways: the engine
- * is registered in INSTANT_ENGINES, so a SPIN frame over the socket settles
- * down the identical path, and this endpoint exists for callers that only speak
- * REST. Both routes converge on the same three primitives — processBet,
- * nextSeedContext, processWin — so there is exactly one place money moves.
- *
- * The catch REST creates is the header balance: `useBalance` on the client only
- * updates from BALANCE / BET_ACCEPTED / GAME_RESULT socket frames, by design.
- * So after settling, this route pushes the new balance down the player's own
- * socket via `pushBalanceToUser`. The HTTP response carries `newBalance` too —
- * for a REST-only client — but the browser's header updates because of the
- * push, not because the component wrote a number into a hook.
- *
- * ── Ordering ───────────────────────────────────────────────────────────────
- * Debit first, then draw. Resolving the spin before taking the stake would open
- * a window where a losing spin can be abandoned (dropped connection, closed
- * tab) after the outcome is known. The stake is committed before the seed nonce
- * is consumed, so an interrupted request is a settled loss, not a free look.
- */
-
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
 
@@ -59,13 +32,6 @@ interface SpinBody {
   currency?: string;
 }
 
-/**
- * Normalises the stake to a decimal string, or explains why it cannot be.
- *
- * Accepts a number because that is what the documented payload sends, but it is
- * converted through Decimal immediately and every downstream step is a string —
- * a float stake would round against the 8dp ledger column.
- */
 function parseStake(raw: unknown): { amount: string } | { error: string } {
   if (raw === undefined || raw === null || raw === '') {
     return { error: 'betAmount is required' };
@@ -97,11 +63,6 @@ function parseStake(raw: unknown): { amount: string } | { error: string } {
 }
 
 export function registerSlotsRoutes(app: FastifyInstance) {
-  /**
-   * Public configuration: symbols, weights-free paytable, paylines and limits.
-   * The web client reads these from @frigat/shared at build time; this exists
-   * for any other client, and for verifying a settled spin by hand.
-   */
   app.get('/api/games/slots/config', async () => ({
     reels: SLOTS_REELS,
     rows: SLOTS_ROWS,
@@ -124,8 +85,6 @@ export function registerSlotsRoutes(app: FastifyInstance) {
     const currency = typeof req.body?.currency === 'string' ? req.body.currency : 'USD';
     const { userId } = identity;
 
-    // 1) Debit the stake atomically. A guarded updateMany inside the ledger's
-    //    transaction is what makes concurrent spins unable to overdraw.
     let bet;
     try {
       bet = await processBet({ userId, amount, gameType: GAME_TYPE, currency });
@@ -145,8 +104,6 @@ export function registerSlotsRoutes(app: FastifyInstance) {
           .code(404)
           .send({ error: 'wallet_not_found', message: 'No wallet for this currency' });
       }
-      // Risk limits and malformed amounts land here. The stake was NOT taken:
-      // processBet throws before or inside its transaction, so nothing committed.
       req.log.warn({ err, userId }, 'slots: bet rejected');
       return reply.code(400).send({
         error: 'bet_rejected',
@@ -154,7 +111,6 @@ export function registerSlotsRoutes(app: FastifyInstance) {
       });
     }
 
-    // 2) Resolve against a fresh, nonce-advanced seed.
     const seed = await nextSeedContext(userId);
     const result = spin({}, seed);
     const resultData = result.resultData as {
@@ -169,7 +125,6 @@ export function registerSlotsRoutes(app: FastifyInstance) {
       lineCount: number;
     };
 
-    // 3) Credit the win, if any. Capped by the same risk policy every game uses.
     let balance = bet.balance;
     let payout = '0';
     if (result.win && result.multiplier > 0) {
@@ -190,7 +145,6 @@ export function registerSlotsRoutes(app: FastifyInstance) {
       }
     }
 
-    // 4) Log the round for history, audit and fairness verification.
     const session = await prisma.gameSession.create({
       data: {
         userId,
@@ -206,12 +160,8 @@ export function registerSlotsRoutes(app: FastifyInstance) {
       select: { id: true },
     });
 
-    // 5) Keep the live header in sync. The socket is the only thing useBalance
-    //    listens to, so a REST settlement has to announce itself.
     pushBalanceToUser(userId, balance);
 
-    // Payouts are per-line multiples of the *total* stake, so the amounts here
-    // sum to totalWin exactly — the client never has to re-derive money.
     const winningLines = resultData.winningLines.map((line) => ({
       lineIndex: line.lineIndex,
       symbol: line.symbol,
@@ -231,8 +181,6 @@ export function registerSlotsRoutes(app: FastifyInstance) {
       newBalance: balance,
       betAmount: amount,
       multiplier: result.multiplier,
-      // The hash was published before this spin; the seed itself is revealed
-      // only on rotation, so a live serverSeed never leaves the server.
       hashedServerSeed: seed.hashedServerSeed,
       clientSeed: seed.clientSeed,
       nonce: seed.nonce,

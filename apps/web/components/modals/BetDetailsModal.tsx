@@ -45,9 +45,6 @@ export function BetDetailsModal({ bet, onClose }: BetDetailsModalProps) {
   const open = bet !== null;
   const betId = bet?.id ?? null;
 
-  // Re-fetch per bet, and drop the previous bet's seeds immediately — showing
-  // one round's fairness record under another round's header would be worse
-  // than showing none.
   useEffect(() => {
     setDetail(null);
     setIsFairnessOpen(false);
@@ -61,7 +58,6 @@ export function BetDetailsModal({ bet, onClose }: BetDetailsModalProps) {
         if (active && body) setDetail(body);
       })
       .catch(() => {
-        /* no-op */
       });
     return () => {
       active = false;
@@ -109,7 +105,6 @@ export function BetDetailsModal({ bet, onClose }: BetDetailsModalProps) {
         window.setTimeout(() => setHasCopied(false), 1600);
       })
       .catch(() => {
-        /* no-op */
       });
   }, [betId]);
 

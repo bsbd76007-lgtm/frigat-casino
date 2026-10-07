@@ -20,20 +20,12 @@ export interface ChickenState {
   currency: string;
   mode: ChickenMode;
   seed: SeedContext;
-  /** Lanes survived so far; 0 is the starting verge. */
   lane: number;
-  /** Last lane of the road for this mode — reaching it cashes out. */
   maxLanes: number;
-  /** Where this seed kills the chicken, or null if it survives the road. */
   bustLane: number | null;
   active: boolean;
 }
 
-/**
- * A player's stake in their own crash round. Crash is single-player: each bet
- * belongs to exactly one round owned by that user, so bets are cleared one at
- * a time as each round settles — never wholesale.
- */
 export interface CrashBet {
   userId: string;
   betTransactionId: string;

@@ -10,12 +10,6 @@ export const metadata: Metadata = {
   alternates: { canonical: '/privacy' },
 };
 
-/**
- * /privacy — server shell.
- *
- * Metadata only; the copy runs through the client-side LanguageProvider, so
- * the body lives in LegalDocumentView. Same arrangement as /rules.
- */
 export default function PrivacyPage() {
   return <LegalDocumentView document={PRIVACY_POLICY} />;
 }

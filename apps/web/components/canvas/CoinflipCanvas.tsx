@@ -30,26 +30,20 @@ import {
 export type CoinSide = 'HEADS' | 'TAILS';
 
 export interface CoinFlight {
-  /** Changes per round; a new id is what starts the landing. */
   id: string;
   landed: CoinSide;
   win: boolean;
 }
 
 export interface CoinflipCanvasProps {
-  /** The player's pick — what the resting coin shows before a flip. */
   pick: CoinSide;
-  /** True from the moment the bet is sent until the server answers. */
   spinning: boolean;
-  /** Set once the round is settled; the coin then falls onto that face. */
   flight: CoinFlight | null;
-  /** Called when the coin has come to rest. */
   onLanded?: () => void;
   height?: number;
   className?: string;
 }
 
-/** Degrees a second while the result is still in the air. */
 const SPIN_RATE = 900;
 const LAND_MS = 1150;
 const MIN_LANDING_TURNS = 3;
@@ -66,11 +60,6 @@ export function CoinflipCanvas({
 }: CoinflipCanvasProps) {
   const reducedMotion = usePrefersReducedMotion();
 
-  /**
-   * The coin's tumble, in degrees from "heads face up". Kept in a ref because
-   * it has to survive across rounds: a landing starts from wherever the free
-   * spin left the coin, which is what stops the coin snapping before it falls.
-   */
   const thetaRef = useRef(0);
   const lastFrameRef = useRef<number | null>(null);
   const landingRef = useRef<{
@@ -90,8 +79,6 @@ export function CoinflipCanvas({
     }
     if (landingRef.current?.id === flight.id) return;
     const from = thetaRef.current;
-    // Land on the face the server rolled: heads is an even half-turn, tails an
-    // odd one. Round up past a few more turns so it always falls forward.
     const parity = flight.landed === 'HEADS' ? 0 : 180;
     const floor = from + MIN_LANDING_TURNS * 360;
     const to = parity + 360 * Math.ceil((floor - parity) / 360);
@@ -100,7 +87,6 @@ export function CoinflipCanvas({
 
   useEffect(() => {
     if (!spinning && !flight) {
-      // Back to rest between rounds: the resting coin shows the player's pick.
       landingRef.current = null;
       thetaRef.current = pick === 'HEADS' ? 0 : 180;
     }
@@ -128,7 +114,6 @@ export function CoinflipCanvas({
           const t = reducedMotion ? 1 : Math.min(1, (now - landing.startedAt) / LAND_MS);
           const eased = 1 - Math.pow(1 - t, 3);
           thetaRef.current = landing.from + (landing.to - landing.from) * eased;
-          // One last arc up and down, with a short bounce as it touches.
           const arc = Math.sin(Math.min(1, t) * Math.PI) * hover;
           const bounce = t > 0.86 ? Math.abs(Math.sin((t - 0.86) * 18)) * (1 - t) * hover * 0.9 : 0;
           z = arc + bounce;
@@ -155,8 +140,6 @@ export function CoinflipCanvas({
           glowStrength: settled ? 0.15 : 0.09,
         });
 
-        // The coin's plinth, so a landed coin has something to land on: a
-        // disc of the table's own surface, raised out of it by its shadows.
         const pad = floorEllipse(scene, x, y, radius * 1.7);
         neu(ctx, () => {
           ctx.beginPath();
@@ -206,15 +189,6 @@ export function CoinflipCanvas({
   );
 }
 
-/**
- * The coin, tumbling about an axis across the screen.
- *
- * A disc seen at an angle is an ellipse, and the vertical radius is the whole
- * illusion: it runs from a full circle when the coin is edge-on to the camera
- * down to the floor's own foreshortening when the coin lies flat. `theta` is
- * measured from "heads face up", so which face the player sees is just the sign
- * of its cosine — the same number that decides where the coin comes to rest.
- */
 function drawCoin(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
@@ -236,8 +210,6 @@ function drawCoin(
   const ry = Math.max(1, rx * (flatRatio * Math.abs(facing) + edgeOn));
   const edgeH = COIN_THICKNESS * s * Math.abs(facing);
 
-  // Rim first: the same ellipse dropped by the coin's thickness, plus the band
-  // between the two — that band is the only thing that says "this has depth".
   neu(ctx, () => {
     if (edgeH > 0.5) {
       ctx.beginPath();
@@ -259,8 +231,6 @@ function drawCoin(
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Milled edge and the letter, both squashed with the coin so they sit in its
-  // plane rather than floating in front of it.
   ctx.save();
   ctx.translate(centre.x, centre.y);
   ctx.scale(1, Math.max(0.02, ry / rx));

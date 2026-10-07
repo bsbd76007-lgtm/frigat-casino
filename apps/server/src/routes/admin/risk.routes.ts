@@ -21,12 +21,6 @@ function clampTake(raw: unknown, fallback = 25): number {
 }
 
 
-/**
- * Finds a withdrawal from either identifier the admin surfaces expose.
- *
- * Returns the ledger row that holds the funds (the thing approve/reject act on)
- * alongside the Withdrawal row, so the caller can update both consistently.
- */
 async function resolveWithdrawal(id: string): Promise<{
   withdrawalId: string | null;
   transactionId: string;
@@ -61,7 +55,6 @@ async function resolveWithdrawal(id: string): Promise<{
   };
 }
 
-/** Mirrors the ledger decision onto the gateway-facing row. */
 async function markWithdrawal(
   withdrawalId: string | null,
   status: 'CONFIRMED' | 'CANCELLED'
@@ -115,13 +108,18 @@ export function registerAdminRiskRoutes(app: FastifyInstance) {
         }),
       ]);
 
-      // The payout destination lives on `Withdrawal`, not on the ledger row —
-      // they are joined by `Withdrawal.transactionId`. Without this the queue
-      // showed who and how much but not *where to*, which is the one field an
-      // approver actually has to check before releasing funds.
       const destinations = await prisma.withdrawal.findMany({
         where: { transactionId: { in: rows.map((t) => t.id) } },
-        select: { transactionId: true, address: true, network: true, provider: true },
+        select: {
+          transactionId: true,
+          address: true,
+          network: true,
+          provider: true,
+          currency: true,
+          payoutAmount: true,
+          exchangeRateUsdt: true,
+          exchangeRateSource: true,
+        },
       });
       const destinationByTx = new Map(destinations.map((d) => [d.transactionId, d]));
 
@@ -137,7 +135,7 @@ export function registerAdminRiskRoutes(app: FastifyInstance) {
           amount: t.amount.toFixed(8),
           status: t.status,
           createdAt: t.createdAt.toISOString(),
-          currency: t.wallet.currency,
+          currency: destinationByTx.get(t.id)?.currency ?? t.wallet.currency,
           userId: t.wallet.user.id,
           userEmail: t.wallet.user.email,
           userFrozen: t.wallet.user.frozen,
@@ -145,22 +143,15 @@ export function registerAdminRiskRoutes(app: FastifyInstance) {
           address: destinationByTx.get(t.id)?.address ?? null,
           network: destinationByTx.get(t.id)?.network ?? null,
           provider: destinationByTx.get(t.id)?.provider ?? null,
+          payoutAmount: destinationByTx.get(t.id)?.payoutAmount?.toFixed(8) ?? null,
+          exchangeRateUsdt:
+            destinationByTx.get(t.id)?.exchangeRateUsdt?.toFixed(12) ?? null,
+          exchangeRateSource: destinationByTx.get(t.id)?.exchangeRateSource ?? null,
         })),
       };
     }
   );
 
-  /**
-   * Explicit approve / reject verbs.
-   *
-   * `:id` accepts either the Withdrawal id or the id of the PENDING ledger row
-   * holding the funds — the admin list serves the latter, while a support agent
-   * looking at a player's history has the former, and making them care which is
-   * a papercut with no upside.
-   *
-   * Both delegate to the same audited ledger functions as the combined endpoint
-   * below: approve settles the hold, reject refunds it inside one transaction.
-   */
   for (const verb of ['approve', 'reject'] as const) {
     app.post<{ Params: { id: string }; Body: { reason?: string } }>(
       `/api/admin/withdrawals/:id/${verb}`,
@@ -192,9 +183,6 @@ export function registerAdminRiskRoutes(app: FastifyInstance) {
               auditWithin: audit,
             });
             await markWithdrawal(resolved.withdrawalId, 'CONFIRMED');
-            // Spread first: the ledger's own `status` is the ledger's word for it
-            // ('COMPLETED'), and the API contract is the same word, but the order
-            // must be explicit rather than accidental.
             return { ...settled, success: true, status: 'COMPLETED' as const };
           }
 
@@ -203,7 +191,6 @@ export function registerAdminRiskRoutes(app: FastifyInstance) {
             auditWithin: audit,
           });
           await markWithdrawal(resolved.withdrawalId, 'CANCELLED');
-          // The refund landed; tell the player's open tabs about it.
           if (resolved.userId) pushBalanceToUser(resolved.userId, refunded.balance);
           return { ...refunded, success: true, status: 'REJECTED' as const };
         } catch (err) {
@@ -260,7 +247,6 @@ export function registerAdminRiskRoutes(app: FastifyInstance) {
         });
       } catch (err) {
         if (err instanceof WithdrawalStateError) {
-          // Already handled by someone else, or never pending.
           return reply.code(409).send({ error: 'not_pending', detail: err.message });
         }
         if (isUnknownAdminError(err)) {
@@ -343,7 +329,6 @@ export function registerAdminRiskRoutes(app: FastifyInstance) {
     }
   });
 
-  // ── Audit log (read-only) ──────────────────
   app.get<{ Querystring: { action?: string; q?: string; take?: string; skip?: string } }>(
     '/api/admin/audit-logs',
     { preHandler: requireAdmin },

@@ -30,7 +30,6 @@ describe('avia — pricing', () => {
   });
 
   it('gets harder with speed, and every mode is harder than the old 17.5%', () => {
-    // Pinned so a table change is a visible decision, not a side effect.
     const [slow, fast, turbo] = MODES.map(landingChance);
     expect(MODES).toEqual(['slow', 'fast', 'turbo']);
     expect(slow).toBeLessThan(0.175);
@@ -62,7 +61,6 @@ describe('avia — pricing', () => {
     for (let n = 0; n < rounds; n += 1) {
       returned += play({ mode: 'slow' }, ctx(n, 'f'.repeat(64))).multiplier;
     }
-    // Heavy right tail; a sanity check on the wiring. The identity above is the proof.
     expect(Math.abs(returned / rounds - RTP)).toBeLessThan(0.1);
   });
 
@@ -83,7 +81,6 @@ describe('avia — safe landing', () => {
       expect(cap).toBeGreaterThan(0);
       const value = aviaExpectedMultiplier(mode) * aviaExpectedSpot();
       expect(cap * value).toBeLessThanOrEqual(RTP * (cap + AVIA.safeLanding.fee) + 1e-9);
-      // One cent more would break it — the cap is the real limit, not a guess.
       expect((cap + 0.01) * value).toBeGreaterThan(RTP * (cap + 0.01 + AVIA.safeLanding.fee));
     }
   });

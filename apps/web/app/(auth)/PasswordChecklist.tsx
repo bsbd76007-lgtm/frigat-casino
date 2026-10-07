@@ -1,11 +1,5 @@
 'use client';
 
-/**
- * The live rules checklist shown under a password field. Renders every rule at
- * once — the point is to show what is still missing, rather than surfacing one
- * complaint at a time after each submit.
- */
-
 import { PASSWORD_RULES } from '@/app/(auth)/passwordRules';
 
 export interface PasswordChecklistProps {

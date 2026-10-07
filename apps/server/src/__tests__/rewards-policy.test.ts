@@ -13,12 +13,6 @@ import {
   createWithdrawal,
 } from '../services/payment.service';
 
-/**
- * The reward policy, pinned: referral commission is cut from the house edge
- * (not from losses), the free-money rewards are gone, and the VIP ladder is
- * strict. Each test makes its own users.
- */
-
 let app: FastifyInstance;
 
 beforeAll(async () => {
@@ -55,8 +49,6 @@ describe('referral commission', () => {
     const referrer = await makeUser();
     const player = await makeUser(referrer.id);
 
-    // A $100 Dice bet. Dice's edge is 2.5%, so the house expects $2.50, and
-    // the referrer's 10% of that is $0.25 — whatever the bet's result.
     const won = await settleAffiliateReward({
       gameType: 'DICE',
       userId: player.id,
@@ -66,7 +58,6 @@ describe('referral commission', () => {
     });
     expect(won?.amount).toBe('0.25000000');
 
-    // Under the old rule a $100 loss paid the referrer $25 (25% of the loss).
     const lost = await settleAffiliateReward({
       gameType: 'DICE',
       userId: player.id,
@@ -144,7 +135,6 @@ describe('deposit bonuses', () => {
     await expect(
       createWithdrawal({ userId: u.id, amount: '20', currency: 'USDT', address: 'T'.padEnd(34, 'x') })
     ).rejects.toBeInstanceOf(BonusWageringError);
-    // Nothing was reserved.
     const after = await prisma.wallet.findFirstOrThrow({ where: { userId: u.id } });
     expect(after.balance.toString()).toBe('100');
   });

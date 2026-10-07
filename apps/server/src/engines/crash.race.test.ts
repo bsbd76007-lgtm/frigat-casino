@@ -8,18 +8,6 @@ import { CrashRoundManager, type CrashRound } from '../websocket/crashRound.mana
 import { elapsedForMultiplier, multiplierAtElapsed } from './crash.engine';
 import type { SeedContext } from '../types/engine.types';
 
-/**
- * Crash: cash-out versus bust.
- *
- * The money question is not "does the curve rise" but "can a single round both
- * pay a cash-out and settle as a loss". The manager's defence is that `end()`
- * removes the round synchronously, so whichever of the two paths reaches it
- * first leaves nothing for the other. These tests hold that line.
- *
- * Timers are faked so the curve is driven deterministically. Real timing would
- * make the decisive assertions flaky, and a flaky money test gets deleted.
- */
-
 const seed = (): SeedContext => ({
   serverSeed: 'a'.repeat(64),
   clientSeed: 'player',
@@ -40,7 +28,6 @@ async function seedPlayer(balance: string) {
   return user.id;
 }
 
-/** Settles a round the way the socket layer does: pay only on a real cash-out. */
 async function cashOut(manager: CrashRoundManager, userId: string, betId: string) {
   const multiplier = manager.liveMultiplier(userId);
   const round = manager.end(userId);
@@ -93,11 +80,6 @@ describe('crash cash-out vs bust', () => {
     expect(Number(await getBalance(userId))).toBeGreaterThan(90);
   });
 
-  /**
-   * The case in the brief: the tick that reaches the crash point ends the
-   * round before any cash-out can be priced. A cash-out arriving at or after
-   * that instant must find nothing and pay nothing.
-   */
   it('refuses a cash-out arriving at the crash point — bust, zero payout', async () => {
     const userId = await seedPlayer('100');
     const bet = await processBet({ userId, amount: '10', gameType: 'CRASH' });
@@ -105,14 +87,13 @@ describe('crash cash-out vs bust', () => {
 
     manager.start(userId, seed(), 1.5);
 
-    // Advance past the crash point so the bust tick has fired.
     vi.advanceTimersByTime(elapsedForMultiplier(1.5) + 200);
     expect(busts).toHaveLength(1);
 
     const result = await cashOut(manager, userId, bet.transactionId);
 
     expect(result.paid).toBe(false);
-    expect(await getBalance(userId)).toBe('90'); // the stake, and nothing back
+    expect(await getBalance(userId)).toBe('90');
     expect(
       await prisma.transaction.count({ where: { wallet: { userId }, type: 'WIN' } })
     ).toBe(0);
@@ -154,7 +135,6 @@ describe('crash cash-out vs bust', () => {
     vi.advanceTimersByTime(elapsedForMultiplier(1.2));
     expect((await cashOut(manager, userId, bet.transactionId)).paid).toBe(true);
 
-    // Well past where the round would have crashed.
     vi.advanceTimersByTime(elapsedForMultiplier(3.0));
     expect(busts).toHaveLength(0);
   });
@@ -183,7 +163,7 @@ describe('crash cash-out vs bust', () => {
 
     expect(manager.activeRoundCount()).toBe(1);
     vi.advanceTimersByTime(elapsedForMultiplier(5.0) + 500);
-    expect(busts).toHaveLength(1); // not two timers racing the same user
+    expect(busts).toHaveLength(1);
   });
 });
 
@@ -196,7 +176,6 @@ describe('crash curve', () => {
   it('round-trips through elapsedForMultiplier', () => {
     for (const target of [1.2, 1.5, 2, 5, 10]) {
       const ms = elapsedForMultiplier(target);
-      // Floors to 2dp, so the reconstructed value can sit one cent low.
       expect(multiplierAtElapsed(ms)).toBeGreaterThanOrEqual(target - 0.01);
     }
   });

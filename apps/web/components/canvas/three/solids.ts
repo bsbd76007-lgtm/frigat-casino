@@ -1,36 +1,17 @@
-/**
- * Solids — what the boards are actually built out of.
- *
- * Every shape here is drawn through a `Scene` projection, so a box on one board
- * and a box on another agree about where the camera and the light are. Only the
- * faces turned toward the camera are drawn, back to front, which is why none of
- * this needs a depth buffer.
- *
- * Pure: no DOM beyond the 2D context, no React, and nothing that decides an
- * outcome. A board passes in a result the server already settled.
- */
-
 import type { Scene, ScreenPoint } from './scene';
 import { NEU } from './palette';
 
-// ─────────────────────────────────────────────
-// Colour
-// ─────────────────────────────────────────────
-
-/** Lightens (f > 0) or darkens (f < 0) a #rgb or #rrggbb colour. */
 export function shade(hex: string, f: number): string {
   const { r, g, b } = parseHex(hex);
   const mix = (c: number) => Math.round(f >= 0 ? c + (255 - c) * f : c * (1 + f));
   return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
 }
 
-/** The same colour at an alpha — for glows, washes and shadows. */
 export function alpha(hex: string, a: number): string {
   const { r, g, b } = parseHex(hex);
   return `rgba(${r},${g},${b},${a})`;
 }
 
-/** Blends two #rgb or #rrggbb colours, `f` of the way from `a` to `b`. */
 export function mixHex(a: string, b: string, f: number): string {
   const x = parseHex(a);
   const y = parseHex(b);
@@ -48,19 +29,6 @@ function parseHex(hex: string): { r: number; g: number; b: number } {
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 
-// ─────────────────────────────────────────────
-// Neumorphic lift
-// ─────────────────────────────────────────────
-
-/**
- * Draws a solid as if pressed up out of the surface: `paint` runs once under
- * the dark shadow (down-right), once under the light one (up-left), then once
- * clean so neither shadow bleeds over the solid itself. Shadows are soft
- * blurs, not gradients.
- *
- * Shadow offsets and blur ignore the context transform, so they are scaled by
- * it here — otherwise a retina canvas gets shadows half the size.
- */
 export function neu(
   ctx: CanvasRenderingContext2D,
   paint: () => void,
@@ -86,11 +54,6 @@ export function neu(
   paint();
 }
 
-/**
- * The pressed counterpart of `neu`: fills `path` and sinks it into the surface.
- * A ring around the path is filled outside the clip, so only its shadows land
- * inside — dark along the top-left inner edge, light along the bottom-right.
- */
 export function neuInset(
   ctx: CanvasRenderingContext2D,
   path: Path2D,
@@ -120,7 +83,6 @@ export function neuInset(
   ctx.restore();
 }
 
-/** A rounded rectangle as a reusable path — for `neu` and `neuInset`. */
 export function roundRectPath(x: number, y: number, w: number, h: number, r: number): Path2D {
   const radius = Math.max(0, Math.min(r, w / 2, h / 2));
   const p = new Path2D();
@@ -133,11 +95,6 @@ export function roundRectPath(x: number, y: number, w: number, h: number, r: num
   return p;
 }
 
-// ─────────────────────────────────────────────
-// Boxes
-// ─────────────────────────────────────────────
-
-/** An axis-aligned box in world space. */
 export interface Box {
   x0: number;
   x1: number;
@@ -156,13 +113,6 @@ export interface FaceColours {
 
 export type BoxFace = 'top' | 'front' | 'left' | 'right';
 
-/**
- * The four face colours of a solid in one base colour. The light is out to the
- * left, so the left flank is the lit one and the right flank is the darkest
- * thing on the solid — the cue that reads as "lit from somewhere" rather than
- * "shaded arbitrarily", and it has to be the same on every board or two solids
- * side by side look like they are in different rooms.
- */
 export function faces(base: string, overrides: Partial<FaceColours> = {}): FaceColours {
   return {
     top: shade(base, 0.2),
@@ -187,10 +137,6 @@ export function poly(
   ctx.fill();
 }
 
-/**
- * An extruded box: the top, the near face, and whichever flank faces the
- * vanishing line, drawn back to front.
- */
 export function drawBox(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
@@ -211,7 +157,6 @@ export function drawBox(
   }, lift);
 }
 
-/** A quad lying on one face of a box, inset by fractions — labels, insets, trim. */
 export function faceQuad(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
@@ -240,11 +185,6 @@ export function faceQuad(
   poly(ctx, [P(flank, y(a0), z(c0)), P(flank, y(a1), z(c0)), P(flank, y(a1), z(c1)), P(flank, y(a0), z(c1))], fill);
 }
 
-/**
- * Ground shadow of a box: the hull of its footprint and of its top face cast
- * through the light. Two passes — a wide faint one and the core — stand in for
- * a soft edge without a blur filter, which not every canvas supports.
- */
 export function drawBoxShadow(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
@@ -268,7 +208,6 @@ export function drawBoxShadow(
   poly(ctx, grow(0.96), `rgba(6,6,9,${0.24 * strength})`);
 }
 
-/** Convex hull (monotone chain) — the outline of a shadow from its corners. */
 function hull<T extends { x: number; y: number }>(points: readonly T[]): T[] {
   const pts = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
   const cross = (o: T, a: T, b: T) =>
@@ -286,30 +225,15 @@ function hull<T extends { x: number; y: number }>(points: readonly T[]): T[] {
   return [...lower.slice(0, -1), ...upper.slice(0, -1)];
 }
 
-// ─────────────────────────────────────────────
-// Text on a face
-// ─────────────────────────────────────────────
-
 export interface FaceTextOptions {
   fill: string;
-  /** Font size in screen pixels at the face, before foreshortening. */
   size: number;
   weight?: number | string;
   family?: string;
-  /** Nudge, as a fraction of the face, from its centre. */
   offset?: readonly [number, number];
   maxWidthFraction?: number;
 }
 
-/**
- * Text lying on a face of a box, sheared into the face's plane.
- *
- * A projected face is a general quad and canvas transforms are affine, so the
- * face is approximated by the parallelogram through three of its corners. Over
- * a tile-sized face the error is well under a pixel, and the alternative — flat
- * text floating over a tilted tile — is the thing that makes a pseudo-3D board
- * look like a sticker sheet.
- */
 export function drawFaceText(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
@@ -364,10 +288,6 @@ export function drawFaceText(
   ctx.restore();
 }
 
-// ─────────────────────────────────────────────
-// Round solids
-// ─────────────────────────────────────────────
-
 export interface FloorEllipse {
   cx: number;
   cy: number;
@@ -375,11 +295,6 @@ export interface FloorEllipse {
   ry: number;
 }
 
-/**
- * How a circle of world radius `r` on the floor at (x, y) draws. Measured
- * rather than derived: the depth radius is read off the projection itself, so
- * it stays correct whatever the scene's stretch and distances are.
- */
 export function floorEllipse(scene: Scene, x: number, y: number, r: number, z = 0): FloorEllipse {
   const centre = scene.project(x, y, z);
   const side = scene.project(x + r, y, z);
@@ -392,7 +307,6 @@ export function floorEllipse(scene: Scene, x: number, y: number, r: number, z = 
   };
 }
 
-/** A soft blob under a round thing, for solids whose hull shadow is overkill. */
 export function drawFloorShadow(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
@@ -416,7 +330,6 @@ export function drawFloorShadow(
   ctx.restore();
 }
 
-/** An upright cylinder — a peg, a chip stack, a coin on edge. */
 export function drawCylinder(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
@@ -432,8 +345,6 @@ export function drawCylinder(
   const top = floorEllipse(scene, x, y, r, z1);
 
   neu(ctx, () => {
-    // The skirt is the band between the two ellipses' front halves: across the
-    // bottom rim right to left, up the left side, back across the top rim.
     ctx.beginPath();
     ctx.ellipse(bottom.cx, bottom.cy, bottom.rx, bottom.ry, 0, 0, Math.PI);
     ctx.lineTo(top.cx - top.rx, top.cy);
@@ -449,7 +360,6 @@ export function drawCylinder(
   }, lift);
 }
 
-/** A sphere — a ball, a bead, a pip. */
 export function drawSphere(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
@@ -470,11 +380,6 @@ export function drawSphere(
   }, lift);
 }
 
-// ─────────────────────────────────────────────
-// Floor
-// ─────────────────────────────────────────────
-
-/** A rectangle of floor, in world space. */
 export function drawFloorQuad(
   ctx: CanvasRenderingContext2D,
   scene: Scene,

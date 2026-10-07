@@ -1,38 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Recovering transparency from a flattened sprite
- *
- * `/chicken.modal.jpg` is a cut-out character that was exported with
- * transparency and then saved as JPEG. JPEG has no alpha channel, so the
- * editor's checkerboard was baked in as ordinary opaque pixels: drawn straight
- * onto the canvas it is a grey checked rectangle sliding down the road.
- *
- * This keys that background back out at load time. Three passes, none of them
- * carrying a tuned radius:
- *
- *   1. **Flood from the border.** Light, neutral pixels reachable from the edge
- *      are background. Connectivity is what does the work — the bird's own
- *      shading passes through the same greys as the checkerboard, so a colour
- *      test alone cannot separate them, but the body is only reachable by
- *      crossing the silhouette.
- *   2. **Keep the largest component.** JPEG ringing leaves specks scattered
- *      across the checkerboard that pass no colour test and survive step 1.
- *      Each is its own connected component, so keeping only the biggest drops
- *      all of them at once. (A morphological closing was tried first and made
- *      it worse: it bridges neighbouring specks into blobs.)
- *   3. **Fill holes and trim the shadow.** Transparent pixels that cannot reach
- *      the border are interior, so they are restored. The baked drop shadow is
- *      the same neutral grey as the body and cannot be keyed by colour — but it
- *      lies entirely below the feet, and the feet are the lowest *coloured*
- *      thing in the frame, so everything under that line goes.
- *
- * The result is cropped to the silhouette, which is what lets a caller centre
- * the bird in a lane rather than centring the whitespace it was exported with.
- *
- * Runs once per image, in the tens of milliseconds for a ~450k pixel source.
- */
-
 export interface KeyedSprite {
   canvas: HTMLCanvasElement;
   width: number;
@@ -40,20 +7,11 @@ export interface KeyedSprite {
 }
 
 export interface KeyOptions {
-  /** Minimum channel value for a pixel to count as background. */
   minLuminance?: number;
-  /** Maximum channel spread — anything more colourful is the subject. */
   maxSaturation?: number;
-  /** Drop everything below the lowest saturated pixel (a baked shadow). */
   trimBelowSubject?: boolean;
 }
 
-/**
- * Keys a flat, light background out of an image and returns the cropped result.
- *
- * Returns `null` when the image cannot be read — a tainted canvas, or a zero
- * sized image — so the caller can fall back rather than draw nothing.
- */
 export function keyOutFlatBackground(
   image: HTMLImageElement,
   options: KeyOptions = {}
@@ -79,7 +37,6 @@ export function keyOutFlatBackground(
   try {
     pixels = sctx.getImageData(0, 0, w, h);
   } catch {
-    // Cross-origin source: the canvas is tainted and cannot be read.
     return null;
   }
 
@@ -88,7 +45,6 @@ export function keyOutFlatBackground(
 
   const isBackground = (idx: number): boolean => {
     const o = idx * 4;
-    // An already-transparent source (a real PNG) needs no keying at all.
     if (data[o + 3] === 0) return true;
     const r = data[o];
     const g = data[o + 1];
@@ -97,7 +53,6 @@ export function keyOutFlatBackground(
     return Math.min(r, g, b) >= minLuminance;
   };
 
-  // ── 1. Flood the background in from the border ──
   const opaque = new Uint8Array(count).fill(1);
   const seen = new Uint8Array(count);
   const stack: number[] = [];
@@ -130,7 +85,6 @@ export function keyOutFlatBackground(
     seed(x, y - 1);
   }
 
-  // ── 2. Keep only the largest opaque component ──
   const label = new Int32Array(count).fill(-1);
   let bestId = -1;
   let bestSize = 0;
@@ -173,7 +127,6 @@ export function keyOutFlatBackground(
     if (opaque[i] && label[i] !== bestId) opaque[i] = 0;
   }
 
-  // ── 3a. Fill interior holes ──
   const reachable = new Uint8Array(count);
   stack.length = 0;
   const flood = (x: number, y: number) => {
@@ -204,7 +157,6 @@ export function keyOutFlatBackground(
     if (!opaque[i] && !reachable[i]) opaque[i] = 1;
   }
 
-  // ── 3b. Trim a baked drop shadow ──
   if (trimBelowSubject) {
     let lastColouredRow = 0;
     for (let i = 0; i < count; i += 1) {
@@ -223,7 +175,6 @@ export function keyOutFlatBackground(
     }
   }
 
-  // ── Feather the cut, so a curved silhouette does not stair-step ──
   const alpha = new Uint8Array(count);
   for (let i = 0; i < count; i += 1) alpha[i] = opaque[i] ? 255 : 0;
   const soft = Uint8Array.from(alpha);
@@ -243,7 +194,6 @@ export function keyOutFlatBackground(
     }
   }
 
-  // ── Crop to the silhouette ──
   let minX = w;
   let minY = h;
   let maxX = -1;
@@ -284,7 +234,6 @@ export function keyOutFlatBackground(
   return { canvas: out, width: cw, height: ch };
 }
 
-/** Loads an image and keys its background out. Resolves null on any failure. */
 export function loadKeyedSprite(
   src: string,
   options?: KeyOptions

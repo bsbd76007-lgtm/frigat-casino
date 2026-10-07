@@ -1,14 +1,5 @@
 'use client';
 
-/**
- * /bonuses — the deposit-bonus ladder.
- *
- * Everything here is read from GET /api/bonuses/me. The bonus is credited by
- * the server when a deposit confirms (payment.service); this page only shows
- * which steps are used, what the next deposit earns, and how much is left to
- * wager before a withdrawal unlocks.
- */
-
 import { useCallback, useEffect, useState } from 'react';
 
 import { useLanguage } from '@/components/providers/LanguageProvider';

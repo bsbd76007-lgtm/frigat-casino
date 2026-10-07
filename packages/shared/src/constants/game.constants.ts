@@ -1,4 +1,3 @@
-/** Global bet bounds (decimal strings; enforced server-side by the ledger). */
 export const BET_LIMITS = {
   min: '0.10',
   max: '10000.00',
@@ -6,48 +5,14 @@ export const BET_LIMITS = {
 
 export const MINES = {
   gridSize: 25,
-  /** Floor of 5: fewer mines makes the first pick near-certain to be safe. */
   minMines: 5,
   maxMines: 24,
 } as const;
 
-/**
- * Chicken Road. Each lane is one provable draw: the hop survives when
- * `floatAt(serverSeed, clientSeed, nonce, lane - 1) >= hazardAt(lane)`. The
- * ladder is priced off survival odds —
- *
- *     multiplier(n) = (1 - edge) / Π_{k=1..n} (1 - hazardAt(k))
- *
- * — so the edge is the same wherever the player stops.
- *
- * `ramp` is why the first hops pay little: the hazard starts at `start` of the
- * mode's `hazard` and climbs linearly to the full rate by lane `lanes`. Early
- * lanes are genuinely safer, so their multipliers are genuinely lower; cutting
- * the early multipliers at a flat hazard instead would quietly raise the edge
- * on exactly the lanes most players stop at.
- *
- * `minCashoutMultiplier` is the difficulty rule, and it is design, not maths:
- * at a fixed RTP a player's chance of winning a round is rtp / (the multiplier
- * they bank), so a board that lets them bank 1.08x wins nine rounds in ten and
- * feels free. Cash out stays locked until the lane reached pays at least this,
- * which caps any strategy's win rate at rtp / 2 ≈ 47% — the edge is untouched,
- * every lane is still priced at exactly (1 - edge) / P(reach).
- *
- * `maxMultiplier` ends the road. The ladder is geometric (the 85% mode passes
- * 10^12 by lane 20), and a game with no admin GameLimit row gets no payout cap
- * at all, so the engine has to bound itself: a mode's last lane is the deepest
- * one priced at or under this, and reaching it cashes out automatically.
- */
 export const CHICKEN = {
   maxMultiplier: 10_000,
   minCashoutMultiplier: 2,
   ramp: { start: 0.4, lanes: 5 },
-  /**
-   * Five difficulties. The hazard is the per-lane crash chance once the ramp
-   * has run in; the ladder is priced off it, so a harder mode pays more per
-   * lane at exactly the same edge — the difficulty and the multiplier are one
-   * dial, not two.
-   */
   modes: {
     low: { hazard: 0.2 },
     medium: { hazard: 0.3 },
@@ -59,47 +24,12 @@ export const CHICKEN = {
 
 export type ChickenMode = keyof typeof CHICKEN.modes;
 
-/** Per-lane crash chance: the mode's hazard, ramped in over the first lanes. */
 export function chickenHazardAt(mode: ChickenMode, lane: number): number {
   const { start, lanes } = CHICKEN.ramp;
   const progress = Math.min(1, (lane - 1) / (lanes - 1));
   return CHICKEN.modes[mode].hazard * (start + (1 - start) * progress);
 }
 
-/**
- * Avia Masters. One bet is one flight, decided whole from the seed: the flight
- * meets a run of pickups and bombs in turn, each applying
- *
- *     m ← m · mul + add          (starting from m = 1)
- *
- * and then either lands on one of the landing spots or ditches. A landing pays
- * the flight's multiplier times the spot's bonus. The landing draw is
- * independent of the flight and the spot, and its probability is what holds
- * the edge:
- *
- *     P(land) = (1 - edge) / (E[M] · E[spot])
- *
- * E[M] is exact, not simulated — every event is independent of the running
- * multiplier, so E[m_{i+1}] = E[mul]·E[m_i] + E[add].
- *
- * Three speeds, each its own table. A faster plane meets fewer events but more
- * of them are bombs and the bubbles are richer, so E[M] rises and landings get
- * rarer: at a 6% edge roughly 14.6% of slow flights land, 12.2% of fast ones
- * and 9.0% of turbo ones. The edge is identical in all three.
- *
- * `safeLanding` buys a guaranteed landing for a flat fee. A flat fee is only
- * safe for the house on small stakes — a guaranteed landing on a large bet is
- * worth far more than the fee — so it is offered only up to the stake at which
- *
- *     stake · E[M] · E[spot] ≤ (1 - edge) · (stake + fee)
- *
- * still holds (`aviaSafeLandingMaxStake`). Below that cap the round returns at
- * most (1 - edge) of everything paid in, fee included.
- *
- * `maxMultiplier` bounds a freak run of stacked multipliers. The cap can only
- * lower a payout, so every price computed from the uncapped expectation leaves
- * the RTP at or under target.
- */
 export const AVIA = {
   maxMultiplier: 10_000,
   events: [
@@ -138,7 +68,6 @@ export const AVIA = {
       },
     },
   },
-  /** Where a landing can come down, and what each multiplies the flight by. */
   spots: [
     { id: 'carrier', label: 'Carrier', mul: 1, weight: 6 },
     { id: 'island', label: 'Island', mul: 1.5, weight: 3 },
@@ -147,7 +76,6 @@ export const AVIA = {
   safeLanding: { fee: 5 },
 } as const;
 
-/** The draw that picks a landing spot — far past any flight's event cursors. */
 export const AVIA_SPOT_CURSOR = 1000;
 
 export type AviaEventKind = (typeof AVIA.events)[number]['kind'];
@@ -166,7 +94,6 @@ export function isAviaMode(value: unknown): value is AviaMode {
   return typeof value === 'string' && Object.hasOwn(AVIA.modes, value);
 }
 
-/** A mode's event table, with each kind's weight attached. Zero weights drop out. */
 export function aviaEventTable(mode: AviaMode): AviaEventSpec[] {
   const weights = AVIA.modes[mode].weights as Record<AviaEventKind, number>;
   return AVIA.events
@@ -174,7 +101,6 @@ export function aviaEventTable(mode: AviaMode): AviaEventSpec[] {
     .filter((e) => e.weight > 0);
 }
 
-/** Picks from a weighted table with one uniform draw in [0, 1). */
 export function aviaPick<T extends { weight: number }>(table: readonly T[], u: number): T {
   const total = table.reduce((sum, e) => sum + e.weight, 0);
   let roll = u * total;
@@ -185,7 +111,6 @@ export function aviaPick<T extends { weight: number }>(table: readonly T[], u: n
   return table[table.length - 1];
 }
 
-/** E[M] over a whole flight in `mode` — exact, from the table alone. */
 export function aviaExpectedMultiplier(mode: AviaMode): number {
   const table = aviaEventTable(mode);
   const total = table.reduce((sum, e) => sum + e.weight, 0);
@@ -201,22 +126,15 @@ export function aviaExpectedMultiplier(mode: AviaMode): number {
   return sum / (max - min + 1);
 }
 
-/** E[spot bonus] for a landing. */
 export function aviaExpectedSpot(): number {
   const total = AVIA.spots.reduce((sum, s) => sum + s.weight, 0);
   return AVIA.spots.reduce((s, spot) => s + spot.weight * spot.mul, 0) / total;
 }
 
-/** The chance a flight lands, priced so a round returns 1 - edge. */
 export function aviaLandingChance(mode: AviaMode, edge: number): number {
   return (1 - edge) / (aviaExpectedMultiplier(mode) * aviaExpectedSpot());
 }
 
-/**
- * The largest stake a safe landing may cover in `mode`, floored to the cent:
- * the stake at which a guaranteed landing still returns no more than
- * (1 - edge) of stake plus fee.
- */
 export function aviaSafeLandingMaxStake(mode: AviaMode, edge: number): number {
   const rtp = 1 - edge;
   const value = aviaExpectedMultiplier(mode) * aviaExpectedSpot();
@@ -293,16 +211,6 @@ export const KENO_PAYTABLE: Record<number, Record<number, number>> = {
   10: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 11.72, 6: 46.86, 7: 234.37, 8: 1054.52, 9: 3515.21, 10: 23434.75 },
 };
 
-// ─────────────────────────────────────────────
-// Slots — 5 reels × 3 rows, 5 fixed paylines
-//
-// Symbols, reel weights, paytable and paylines live here rather than in the
-// engine because the client renders the same numbers: the paytable panel and
-// the payline overlay have to agree with what the server paid, and duplicating
-// them is how those two drift apart. The server still decides every spin — the
-// client only ever *draws* the matrix it is handed.
-// ─────────────────────────────────────────────
-
 export const SLOTS_REELS = 5;
 export const SLOTS_ROWS = 3;
 
@@ -319,12 +227,6 @@ export const SLOTS_SYMBOLS = [
 
 export type SlotSymbol = (typeof SLOTS_SYMBOLS)[number];
 
-/**
- * Relative weight of each symbol on a reel. Low-value fruit is common, SEVEN is
- * rare and WILD is rarer still — WILD substitutes for everything, so its weight
- * drives the payout distribution far harder than its own line wins suggest.
- * Weights are per-reel-identical, which keeps the maths verifiable by hand.
- */
 export const SLOTS_WEIGHTS: Record<SlotSymbol, number> = {
   CHERRY: 22,
   LEMON: 20,
@@ -336,14 +238,6 @@ export const SLOTS_WEIGHTS: Record<SlotSymbol, number> = {
   WILD: 3,
 };
 
-/**
- * Line payouts as a multiple of the *line* stake (the total bet is split evenly
- * across the paylines). Index by match length: 3, 4 or 5 from the leftmost reel.
- *
- * Calibrated against SLOTS_WEIGHTS to land near the house edge below — see the
- * RTP test in apps/server/src/engines/engines.test.ts, which fails if a
- * change to either table moves the return outside its band.
- */
 export const SLOTS_PAYTABLE: Record<SlotSymbol, Record<3 | 4 | 5, number>> = {
   CHERRY: { 3: 5, 4: 25, 5: 100 },
   LEMON: { 3: 7, 4: 30, 5: 150 },
@@ -352,16 +246,9 @@ export const SLOTS_PAYTABLE: Record<SlotSymbol, Record<3 | 4 | 5, number>> = {
   BELL: { 3: 18, 4: 70, 5: 275 },
   BAR: { 3: 30, 4: 150, 5: 550 },
   SEVEN: { 3: 55, 4: 275, 5: 2500 },
-  // Only 5-of-a-kind WILD is actually reachable: a shorter run of WILDs adopts
-  // the identity of the first non-WILD reel and pays as that symbol instead.
-  // The 3 and 4 rows are kept so the table is total over match lengths.
   WILD: { 3: 250, 4: 1000, 5: 10_000 },
 };
 
-/**
- * The five fixed lines, each as the row index taken from reels 0…4:
- * top, middle, bottom, V and inverted V.
- */
 export const SLOTS_PAYLINES: readonly (readonly number[])[] = [
   [0, 0, 0, 0, 0],
   [1, 1, 1, 1, 1],
@@ -378,21 +265,6 @@ export const SLOTS_PAYLINE_NAMES = [
   'Inverted V',
 ] as const;
 
-// ─────────────────────────────────────────────
-// Credentials
-//
-// Adapted from the Event-space PasswordSchema (min length + upper + lower +
-// digit). Kept here rather than in either app because the API rejects weak
-// passwords and the sign-up form has to describe the same rule — two copies of
-// a validation rule is how a form starts promising something the server will
-// refuse.
-//
-// Deliberately no symbol requirement and a high ceiling: composition rules past
-// this point push people towards `Password1!` and away from length, which is
-// what actually resists guessing. The ceiling exists because argon2 hashes the
-// whole input, so an unbounded password is a cheap way to burn server CPU.
-// ─────────────────────────────────────────────
-
 export const PASSWORD_POLICY = {
   minLength: 8,
   maxLength: 200,
@@ -403,7 +275,6 @@ export interface PasswordProblem {
   message: string;
 }
 
-/** Every rule the password breaks, so a form can show them all at once. */
 export function passwordProblems(password: string): PasswordProblem[] {
   const problems: PasswordProblem[] = [];
   if (password.length < PASSWORD_POLICY.minLength) {

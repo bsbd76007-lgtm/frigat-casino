@@ -1,50 +1,28 @@
 'use client';
 
-/**
- * Slot machine — spin timing and sound.
- *
- * The reels animate over an outcome the server already settled, so everything
- * here is presentation: how long a reel spins, how far it overshoots, and what
- * it sounds like when it stops. None of it can change what the reels land on.
- */
-
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import type { SlotSymbol } from '@frigat/shared';
 
-// ─────────────────────────────────────────────
-// Spin choreography
-// ─────────────────────────────────────────────
-
 export const TIMING = {
-  /** Ramp from rest to full speed. */
   accelerateMs: 380,
-  /** Reels keep turning at least this long, however fast the server answers. */
   minSpinMs: 950,
-  /** Gap between one reel stopping and the next. */
   stagger: 200,
-  /** Length of the settle, including the elastic overshoot. */
   settleMs: 520,
-  /** Symbols per second at full speed. */
   topSpeed: 26,
 } as const;
 
-/** Cells of runway a reel covers while settling — enough to stay a blur. */
 export const SETTLE_TRAVEL = 7;
 
-/** Strip length per reel. Long enough that the landing window is never seen twice. */
 export const STRIP_LENGTH = 64;
 
 export type ReelPhase = 'idle' | 'accelerating' | 'spinning' | 'settling' | 'stopped';
 
 export interface Reel {
-  /** Symbols the reel is carrying; the landing window is written in on stop. */
   strip: SlotSymbol[];
-  /** Scroll position in symbol cells. */
   offset: number;
   velocity: number;
   phase: ReelPhase;
-  /** When this reel should begin settling (performance.now), once known. */
   settleAt: number | null;
   settleFrom: number;
   settleTo: number;
@@ -70,11 +48,6 @@ export interface SlotSpinResponse {
   nonce: number;
 }
 
-/**
- * Sound triggers. Left as injectable no-ops so a host app can drop in real
- * samples without this component owning an asset pipeline; the built-in
- * fallback synthesises tones with WebAudio and is muted until asked for.
- */
 export interface SlotSounds {
   onSpinStart: () => void;
   onReelStop: (reelIndex: number) => void;
@@ -89,10 +62,6 @@ export const SILENT: SlotSounds = {
   onLose: () => {},
 };
 
-/**
- * Minimal WebAudio blips, created lazily on the first *user-gesture-driven*
- * play so the browser's autoplay policy is never tripped.
- */
 export function useDefaultSounds(enabled: boolean): SlotSounds {
   const ctxRef = useRef<AudioContext | null>(null);
 

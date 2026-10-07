@@ -18,7 +18,6 @@ const TABS = ['All Bets', 'High Rollers', 'My Bets'] as const;
 type Tab = (typeof TABS)[number];
 
 interface LiveBetsFeedProps {
-  /** Sidebar variant: narrower rows, fewer of them, no tab bar. */
   compact?: boolean;
 }
 
@@ -38,11 +37,6 @@ export default function LiveBetsFeed({ compact = false }: LiveBetsFeedProps) {
       setBets((prev) =>
         [
           {
-            // Live frames carry no row id, so one is synthesised. The bet is
-            // already in GameSession under a different id; this key only has to
-            // be unique within the rendered list. The `live-` prefix is load
-            // bearing — the details dialog reads it to know there is no
-            // persisted row to fetch seeds from yet.
             id: `live-${timestamp}-${userId}`,
             userId,
             username: String(data.username ?? 'player'),
@@ -72,12 +66,8 @@ export default function LiveBetsFeed({ compact = false }: LiveBetsFeedProps) {
         });
       })
       .catch(() => {
-        /* no-op */
       })
       .finally(() => {
-        // `finally`, not the success path: a failed backfill has also finished
-        // loading, and leaving the skeleton up forever would promise rows that
-        // are never going to arrive.
         if (active) setHasLoaded(true);
       });
     return () => {
@@ -109,8 +99,6 @@ export default function LiveBetsFeed({ compact = false }: LiveBetsFeedProps) {
 
   const closeDetails = useCallback(() => setSelected(null), []);
 
-  // The sidebar column is ~240px, so a compact feed drops the tab bar and
-  // shows fewer rows rather than shrinking type until it is unreadable.
   const rows = compact ? filtered.slice(0, 8) : filtered;
 
   return (
@@ -166,9 +154,6 @@ export default function LiveBetsFeed({ compact = false }: LiveBetsFeedProps) {
                 <span
                   className={`feed__payout${won ? ' feed__payout--win' : ' feed__payout--loss'}`}
                 >
-                  {/* The signed net result, not the gross payout: a $10 stake
-                      returning $4 is a loss, and showing a bare "$4.00" in the
-                      payout column would read as a win. */}
                   {formatSignedUsd(betProfit(bet))}
                 </span>
               </button>

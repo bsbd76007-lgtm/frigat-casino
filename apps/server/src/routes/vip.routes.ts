@@ -1,18 +1,4 @@
-/**
- * FRIGAT — VIP & daily bonus routes
- *
- *   GET  /api/vip/me              tier, wagered volume, claimable rakeback
- *   POST /api/vip/claim-rakeback  credit the claimable amount
- *
- * The daily wheel (/api/bonus/spin, /api/vip/daily-wheel) was removed with the
- * Free Money page — no free spins are paid out any more.
- *
- * All reward maths lives in bonus.service; these handlers only translate
- * between HTTP and that service, so the eligibility and idempotency guards
- * cannot be bypassed by calling a different endpoint.
- */
-
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { identityFromRequest } from '../middleware/auth';
 import { pushBalanceToUser } from '../websocket/socket.server';
 import { WalletNotFoundError } from '../services/ledger.service';

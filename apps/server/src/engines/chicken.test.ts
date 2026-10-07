@@ -22,7 +22,6 @@ const ctx = (nonce = 0, serverSeed = 'a'.repeat(64)): SeedContext => ({
 const MODES = Object.keys(CHICKEN.modes) as ChickenMode[];
 const RTP = 1 - HOUSE_EDGE.CHICKEN;
 
-/** Chance of standing on `lane`: the product of every hop's survival. */
 const reach = (mode: ChickenMode, lane: number) => {
   let p = 1;
   for (let k = 1; k <= lane; k += 1) p *= 1 - chickenHazardAt(mode, k);
@@ -31,8 +30,6 @@ const reach = (mode: ChickenMode, lane: number) => {
 
 describe('chicken — ladder', () => {
   it('holds the same edge at every lane, in every mode', () => {
-    // A flat per-lane increment drifts; pricing off survival odds does not.
-    // Flooring to 2 dp may only ever shave the player's side, never add to it.
     for (const mode of MODES) {
       for (let lane = 1; lane <= maxLanes(mode); lane += 1) {
         const rtp = multiplierAt(mode, lane) * reach(mode, lane);
@@ -57,7 +54,6 @@ describe('chicken — ladder', () => {
       expect(multiplierAt(mode, last)).toBeLessThanOrEqual(CHICKEN.maxMultiplier);
       expect(multiplierAt(mode, last + 1)).toBeGreaterThan(CHICKEN.maxMultiplier);
     }
-    // Pinned so a hazard or cap change is a visible decision, not a side effect.
     expect(MODES.map(maxLanes)).toEqual([43, 27, 15, 9, 7]);
   });
 
@@ -71,7 +67,6 @@ describe('chicken — ladder', () => {
       }
       expect(chickenHazardAt(mode, lanes)).toBeCloseTo(full, 12);
       expect(chickenHazardAt(mode, lanes + 7)).toBeCloseTo(full, 12);
-      // The flat ladder this replaced priced lane 1 at rtp / (1 - full).
       expect(multiplierAt(mode, 1)).toBeLessThan(RTP / (1 - full));
     }
   });
@@ -83,10 +78,8 @@ describe('chicken — ladder', () => {
       if (lane > 1) {
         expect(multiplierAt(mode, lane - 1)).toBeLessThan(CHICKEN.minCashoutMultiplier);
       }
-      // The best any strategy can do is bank at the unlock lane.
       expect(reach(mode, lane)).toBeLessThanOrEqual(RTP / CHICKEN.minCashoutMultiplier + 1e-12);
     }
-    // Pinned so a hazard, ramp or minimum change is a visible decision.
     expect(MODES.map(minCashoutLane)).toEqual([5, 4, 3, 2, 2]);
   });
 
@@ -101,7 +94,6 @@ describe('chicken — ladder', () => {
 describe('chicken — modes', () => {
   it('accepts only the configured modes', () => {
     for (const mode of MODES) expect(isChickenMode(mode)).toBe(true);
-    // Inherited keys must not pass: `in` would accept these.
     for (const bad of ['', 'LOW', 'toString', '__proto__', 'constructor', 0, null, undefined]) {
       expect(isChickenMode(bad)).toBe(false);
     }
@@ -135,7 +127,6 @@ describe('chicken — outcomes', () => {
         if (survives(mode, lane, ctx(n, 'c'.repeat(64)))) survived += 1;
       }
       const p = 1 - chickenHazardAt(mode, lane);
-      // ~4.5 standard deviations at the widest (p = 0.5).
       expect(Math.abs(survived / rounds - p)).toBeLessThan(0.016);
     }
   });
@@ -149,7 +140,6 @@ describe('chicken — outcomes', () => {
       const bust = bustLane(mode, ctx(n, 'd'.repeat(64)));
       if (bust === null || bust > target) returned += multiplierAt(mode, target);
     }
-    // multiplier ≈ 1.6, so the per-round sd is ~0.65 and the mean's ~0.003.
     expect(Math.abs(returned / rounds - RTP)).toBeLessThan(0.03);
   });
 });

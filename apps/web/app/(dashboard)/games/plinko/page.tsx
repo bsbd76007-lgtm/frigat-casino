@@ -22,8 +22,6 @@ export default function PlinkoPage() {
   const [risk, setRisk] = useState<PlinkoRisk>('MEDIUM');
   const [drops, setDrops] = useState<PlinkoDrop[]>([]);
 
-  // autoSettle is off: the ball is still falling when the result lands, so the
-  // canvas releases the controls via onDropComplete once it reaches a bucket.
   const { busy, bet, settle } = useGameRound<{
     path?: Array<'L' | 'R'>;
     bucket?: number;
@@ -31,8 +29,6 @@ export default function PlinkoPage() {
   }>('PLINKO', {
     autoSettle: false,
     onResult: ({ result, raw }) => {
-      // No path means there is nothing to animate, so no drop will ever
-      // complete — release the controls here or the page locks up.
       if (!Array.isArray(result?.path)) {
         settle();
         return;

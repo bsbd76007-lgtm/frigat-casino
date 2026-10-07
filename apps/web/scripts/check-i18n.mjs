@@ -1,17 +1,4 @@
 /* eslint-disable no-undef */
-/**
- * FRIGAT — i18n key validator
- *
- * Two checks the type system cannot make:
- *   1. every t('a.b.c') in the source resolves against en.json
- *   2. en.json and ru.json hold exactly the same key set
- *
- * `Messages = typeof en` already makes a key *missing from ru.json* a compile
- * error, but a key that exists in neither — a typo in a t() call — type-checks
- * fine and renders the raw path to the player. That is what this catches.
- *
- *   node scripts/check-i18n.mjs
- */
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath } from 'url';

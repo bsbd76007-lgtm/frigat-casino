@@ -27,9 +27,6 @@ export default function MinesPage() {
   const [hitTile, setHitTile] = useState<number | null>(null);
   const [outcome, setOutcome] = useState<'bust' | 'cashout' | null>(null);
 
-  // A mines round spans several frames, so `busy` means "a message is in
-  // flight", not "a round is running" — `active` is the round. Each frame that
-  // answers one of our messages releases the controls.
   const { busy, begin, settle, bet } = useGameRound('MINES', {
     on: {
       BET_ACCEPTED: () => {

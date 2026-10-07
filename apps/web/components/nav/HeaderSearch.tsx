@@ -8,23 +8,9 @@ import { useLanguage } from '@/components/providers/LanguageProvider';
 import { useSearch } from '@/components/providers/SearchProvider';
 import { useInjectedStyles } from '@/lib/useInjectedStyles';
 
-/**
- * Header game search.
- *
- * Typing filters the home grid through the shared search context and opens a
- * dropdown of matches. The dropdown is a combobox: the input keeps focus while
- * arrow keys move a virtual cursor through the list, which is what lets a
- * player type, pick and press Enter without ever leaving the field.
- */
-
 const STYLE_ID = 'fg-header-search-styles';
 
 const CSS = `
-/* margin-inline: auto centres the field in whatever space the brand and the
-   cashier controls leave, rather than letting it sit hard against the logo.
-   Auto margins on a flex item split the free space evenly on both sides, which
-   holds at every width without absolute positioning that could overlap the
-   controls on a medium screen. */
 .hsearch { position: relative; display: flex; align-items: center; gap: 8px;
   flex: 1 1 360px; min-width: 0; max-width: 460px; margin-inline: auto; }
 .hsearch__field { display: flex; align-items: center; gap: 8px; flex: 1 1 auto;
@@ -38,7 +24,6 @@ const CSS = `
   font-size: 13px; color: var(--fg-text); background: transparent; border: 0;
   outline: none; }
 .hsearch__input::placeholder { color: var(--fg-muted); }
-/* The native search affordance duplicates our own clear button. */
 .hsearch__input::-webkit-search-cancel-button { display: none; }
 .hsearch__clear { display: flex; align-items: center; justify-content: center;
   width: 20px; height: 20px; padding: 0; color: var(--fg-muted);
@@ -66,8 +51,6 @@ const CSS = `
 .hsearch__empty { padding: 10px 8px; font-size: 13px; text-align: center;
   color: var(--fg-muted); }
 
-/* Round trigger beside the field — the click affordance for touch/pointer
-   users who would otherwise have to press Enter to act on a query. */
 .hsearch__submit { flex: 0 0 auto; display: grid; place-items: center;
   width: 36px; height: 36px; padding: 0; color: var(--fg-muted); background: var(--fg-line);
   border: 1px solid var(--fg-line); border-radius: var(--fg-r-pill); cursor: pointer;
@@ -94,11 +77,8 @@ export function HeaderSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = useId();
 
-  // Only offer the dropdown once something has been typed; an empty query
-  // matches the whole catalogue, which is the grid's job, not a menu's.
   const showMenu = open && isSearching;
 
-  // A shrinking result list must never leave the cursor past the end.
   useEffect(() => setCursor(0), [query]);
 
   useEffect(() => {
@@ -120,11 +100,6 @@ export function HeaderSearch() {
     [clear, router]
   );
 
-  /**
-   * Shared by the form submit and the round trigger button: act on the
-   * highlighted match if one is showing, otherwise just open the dropdown so
-   * a tap has something to do even before the player has typed anything.
-   */
   const submit = useCallback(() => {
     const picked = matches[cursor];
     if (showMenu && picked) {
@@ -138,8 +113,6 @@ export function HeaderSearch() {
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
-      // First Escape closes the menu, a second clears the field — the same
-      // two-stage behaviour a native search control has.
       if (showMenu) setOpen(false);
       else if (query) clear();
       return;
@@ -263,8 +236,6 @@ export function HeaderSearch() {
                       ? 'hsearch__option hsearch__option--active'
                       : 'hsearch__option'
                   }
-                  // Pointer-down would fire before the click and blur the
-                  // input, closing the menu out from under the tap.
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseEnter={() => setCursor(index)}
                   onClick={() => go(entry.slug)}

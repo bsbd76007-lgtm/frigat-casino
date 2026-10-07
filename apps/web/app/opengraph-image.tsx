@@ -1,28 +1,9 @@
 import { ImageResponse } from 'next/og';
 
-/**
- * FRIGAT — social preview card (1200×630).
- *
- * Generated with next/og rather than committed as a PNG so the card cannot
- * drift out of step with the brand, and so there is no binary in the repo that
- * someone has to open Figma to change.
- *
- * Next wires this into BOTH `og:image` and `twitter:image`, so no separate
- * twitter-image route is needed.
- *
- * Deliberately no webfont. The three variable fonts in /public/fonts would
- * each have to be read and passed to satori, and a missing or renamed file
- * would fail the build for a decorative gain — the system sans renders the
- * same six words legibly at this size.
- */
-
 export const alt = 'FRIGAT — provably fair casino games';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-// Held here rather than imported from globals.css: satori resolves no CSS
-// custom properties, so these have to be literal. They mirror the dark theme's
-// --fg-bg, --fg-panel, --fg-text, --fg-muted and --fg-accent.
 const BG = '#0a0a0c';
 const EDGE = '#1e1e23';
 const TEXT = '#f2f2f5';
@@ -41,8 +22,6 @@ export default function OpengraphImage() {
           justifyContent: 'space-between',
           background: BG,
           padding: 72,
-          // satori has no default border-box, so the inset border is drawn as
-          // a nested element rather than with box-sizing.
           border: `1px solid ${EDGE}`,
         }}
       >

@@ -14,7 +14,6 @@ export { dice, coinflip, roulette, plinko, crash, mines, limbo, keno, slots, chi
 
 import type { EngineResult, SeedContext } from '../types/engine.types';
 
-/** One-shot engines resolvable synchronously from a single seed context. */
 export const INSTANT_ENGINES = {
   DICE: (p: Record<string, unknown>, s: SeedContext): EngineResult =>
     dice.play(p as unknown as dice.DiceParams, s),
@@ -28,11 +27,7 @@ export const INSTANT_ENGINES = {
     limbo.play(p as unknown as limbo.LimboParams, s),
   KENO: (p: Record<string, unknown>, s: SeedContext): EngineResult =>
     keno.play(p as unknown as keno.KenoParams, s),
-  // Registered here as well as behind its REST route, so a spin placed over the
-  // socket settles down the exact same audited path as every other instant game.
   SLOTS: (p: Record<string, unknown>, s: SeedContext): EngineResult => slots.spin(p, s),
-  // One bet, one flight: the whole trajectory is decided here and the client
-  // only plays it back, so it settles like any other one-shot game.
   AVIA: (p: Record<string, unknown>, s: SeedContext): EngineResult => avia.play(p, s),
 } as const;
 

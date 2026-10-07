@@ -41,7 +41,6 @@ export function DiceIcon({ size = 40, title, ...rest }: GameIconProps) {
         </filter>
       </defs>
 
-      {/* Accent pool under the die — the neon the rest of the set shares. */}
       <ellipse cx="24" cy="39.5" rx="13" ry="3.4" fill="#e0b055" opacity=".18" filter={`url(#${glow})`} />
 
       <g stroke="#0a0f14" strokeWidth="1.1" strokeLinejoin="round">
@@ -85,7 +84,6 @@ export function DiceIcon({ size = 40, title, ...rest }: GameIconProps) {
         />
       ))}
 
-      {/* Highlight running along the near vertical edge. */}
       <path
         d="M24 23.4v13.6"
         stroke="#ffffff"

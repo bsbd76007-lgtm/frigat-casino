@@ -303,7 +303,8 @@
     "targetMultiplier": "Целевой множитель",
     "rows": "Ряды",
     "risk": "Риск",
-    "topMultiplier": "Макс. множитель"
+    "topMultiplier": "Макс. множитель",
+    "rocketFlewTo": "Ракета долетела до"
   },
   "fair": {
     "title": "Честная игра",
@@ -541,6 +542,9 @@
     "clientSeed": "Клиентский сид"
   },
   "auth": {
+    "or": "или",
+    "googleFailed": "Вход через Google не завершён. Попробуйте ещё раз.",
+    "googleUseSignIn": "В этом аккаунте включено приложение-аутентификатор. Войдите через Google на странице входа.",
     "email": "Эл. почта",
     "password": "Пароль",
     "confirmPassword": "Подтвердите пароль",
@@ -591,7 +595,9 @@
     "resetPasswordSub": "Введите почту, и мы пришлём код из {digits} цифр для установки нового пароля.",
     "sending": "Отправляем…",
     "sendResetCode": "Отправить код",
-    "rememberedIt": "Вспомнили пароль?"
+    "rememberedIt": "Вспомнили пароль?",
+    "showPassword": "Показать пароль",
+    "hidePassword": "Скрыть пароль"
   },
   "gameUi": {
     "betAmount": "Сумма ставки",

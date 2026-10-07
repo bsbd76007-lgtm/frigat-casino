@@ -1,19 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Bet Controls
- *
- * Stake input, quick modifiers (2x / ½ / Max) and the primary action button,
- * which flips between Bet and Cashout for the interactive games (MINES, CRASH).
- *
- * All amount math runs through the exact decimal helpers — the stake is a
- * `Decimal(18, 8)` string end-to-end, never a float.
- *
- * Client-side validation mirrors `BET_LIMITS` and the guarded debit in
- * ledger.service.ts. It exists purely to keep the UI honest: the server
- * re-validates every bet and remains the only authority.
- */
-
 import { useCallback, useId, useMemo } from 'react';
 
 import {
@@ -36,7 +22,6 @@ export const DEFAULT_MAX_BET = '10000.00';
 export interface BetControlsProps {
   amount: string;
   onAmountChange: (next: string) => void;
-  /** Authoritative wallet balance; caps the Max modifier when present. */
   balance?: string | null;
   minBet?: string;
   maxBet?: string;
@@ -44,11 +29,6 @@ export interface BetControlsProps {
   onBet: () => void;
   onCashout?: () => void;
   canCashout?: boolean;
-  /**
-   * Cashout button colour. Crash uses the accent; the default is the gold
-   * pill. Named for the role rather than the hue — this was 'green' until the
-   * accent became amber, at which point the name described nothing.
-   */
   cashoutTone?: 'gold' | 'accent';
   cashoutAmount?: string | null;
   cashoutMultiplier?: number | null;
@@ -62,7 +42,6 @@ export interface BetControlsProps {
 interface Validation {
   valid: boolean;
   message: string | null;
-  /** The stake exceeds the wallet — the only failure a deposit can fix. */
   needsFunds?: boolean;
 }
 
@@ -82,8 +61,6 @@ const CSS = `
   box-shadow: var(--fg-input-inset);
   transition: border-color var(--fg-t), box-shadow var(--fg-t); }
 .fg-bet__input::placeholder { color: var(--fg-placeholder); }
-/* The ring replaces the border rather than sitting outside it, so focus does
-   not nudge the field's neighbours by a pixel. */
 .fg-bet__input:focus-visible { border-color: transparent;
   box-shadow: var(--fg-input-inset), 0 0 0 2px rgba(59, 124, 255,.5); }
 .fg-bet__input[aria-invalid="true"] { border-color: var(--fg-red); }
@@ -112,8 +89,6 @@ const CSS = `
   letter-spacing: .02em; color: var(--fg-bg); background: var(--fg-accent); border: none;
   border-radius: var(--fg-r); cursor: pointer;
   transition: filter var(--fg-snap), transform var(--fg-snap), box-shadow var(--fg-snap); }
-/* Cash Out and Bet are the primary actions on a game screen, so they carry the
-   accent glow. */
 .fg-bet__action:hover:not(:disabled) { filter: brightness(1.08); box-shadow: var(--fg-cta-glow); }
 .fg-bet__action:active:not(:disabled) { transform: scale(.98) translateY(1px); }
 .fg-bet__action:focus-visible { outline: none; box-shadow: var(--fg-ring); }
@@ -182,9 +157,6 @@ export function BetControls({
       };
     }
     if (balance && isDecimalString(balance) && compareDecimal(amount, balance) > 0) {
-      // Flagged rather than just rejected: this is the one failure the player
-      // can act on, so the control offers the deposit dialog instead of a
-      // dead end. There is no demo mode to fall back to.
       return { valid: false, message: t('bet.insufficient'), needsFunds: true };
     }
     return { valid: true, message: null };
@@ -236,8 +208,6 @@ export function BetControls({
           <input
             id={inputId}
             className="fg-bet__input"
-            // `text` + inputMode keeps the exact decimal string; a number input
-            // would hand back a float and round-trip through binary.
             type="text"
             inputMode="decimal"
             autoComplete="off"

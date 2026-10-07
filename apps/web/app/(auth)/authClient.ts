@@ -1,6 +1,7 @@
 'use client';
 
 import { API_URL, writeStoredToken } from '@/lib/token';
+import { readStoredLocale } from '@/components/providers/LanguageProvider';
 
 export const DEFAULT_DESTINATION = '/games/crash';
 
@@ -23,11 +24,6 @@ interface AuthResponse {
 
 export class AuthError extends Error {}
 
-/**
- * Thrown by a sign-in step whose credentials were right but whose account has
- * an authenticator: no session yet, only a short-lived challenge for
- * `verifyTotp` to finish with. Forms catch it to switch to the code step.
- */
 export class TotpRequiredError extends AuthError {
   constructor(readonly challenge: string) {
     super('Enter the code from your authenticator app.');
@@ -55,9 +51,12 @@ const FALLBACK_COPY: Record<string, string> = {
   turnstile_failed: 'Human verification failed. Please try again.',
   weak_password: 'Choose a stronger password.',
   registration_expired: 'That registration has expired. Please start again.',
+  invalid_google_token: 'Google sign-in could not be verified. Please try again.',
+  google_account_mismatch: 'This email is linked to a different Google account.',
+  google_unavailable: 'Google sign-in is not available right now.',
+  account_deleted: 'This account has been deleted.',
 };
 
-/** Shared by both sign-in paths: persist the token and mirror it to the cookie. */
 async function establishSession(token: string): Promise<void> {
   writeStoredToken(token);
   try {
@@ -67,15 +66,9 @@ async function establishSession(token: string): Promise<void> {
       body: JSON.stringify({ token }),
     });
   } catch {
-    /* no-op — a cookie failure must not block an otherwise valid sign-in */
   }
 }
 
-/**
- * Display copy for a rejection. The server's own `message` wins when present —
- * it is the only party that knows which rule was broken — with the local table
- * as a fallback for bare error codes.
- */
 function messageFor(body: Record<string, unknown>, status: number): string {
   const message = typeof body.message === 'string' ? body.message : undefined;
   const error = typeof body.error === 'string' ? body.error : undefined;
@@ -84,33 +77,11 @@ function messageFor(body: Record<string, unknown>, status: number): string {
 }
 
 export interface OtpSendResult {
-  /** Seconds before another code may be requested. */
   resendAfterSeconds: number;
   expiresInSeconds: number;
-  /**
-   * Present only when the API has no SMTP transport configured, which it
-   * refuses to do in production. Lets local development complete a sign-in
-   * without an inbox.
-   */
   devCode?: string;
 }
 
-/*
- * sendLoginCode was removed alongside POST /api/auth/otp/send.
- *
- * That pair let a caller name any address, receive a code, and exchange it for
- * a session without ever presenting a password. Sign-in now goes through
- * submitPassword() below, which verifies the password first and only then
- * triggers the code that verifyLoginCode() completes.
- */
-
-/**
- * Step two: exchange the code for a session.
- *
- * The second step of password sign-in. Formerly shared with a passwordless
- * path; that path is gone, so a LOGIN code now only exists once a password has
- * been accepted.
- */
 export async function verifyLoginCode(
   email: string,
   code: string,
@@ -130,10 +101,42 @@ export async function verifyLoginCode(
   return parsed.user;
 }
 
-/**
- * The last step for an account with an authenticator: the challenge from the
- * previous step plus a 6-digit code (or a backup code) opens the session.
- */
+export async function signInWithGoogle(
+  code: string,
+  redirectUri: string,
+  ref?: string | null
+): Promise<AuthedUser> {
+  console.log('[google] POST /api/auth/google', {
+    url: `${API_URL}/api/auth/google`,
+    payload: {
+      code: `${code.slice(0, 8)}… (${code.length} chars)`,
+      redirectUri,
+      locale: readStoredLocale(),
+    },
+    ref: ref ?? null,
+  });
+
+  const { response, body } = await postJson('/api/auth/google', { code, redirectUri }, ref);
+
+  const log = response.ok ? console.log : console.error;
+  log('[google] /api/auth/google responded', response.status, {
+    ...body,
+    token: typeof body.token === 'string' ? '(session token received)' : undefined,
+    challenge: typeof body.challenge === 'string' ? '(2fa challenge received)' : undefined,
+  });
+
+  const totp = response.ok ? totpChallengeOf(body) : null;
+  if (totp) throw new TotpRequiredError(totp);
+
+  const parsed = body as AuthResponse;
+  if (!response.ok || !parsed.token || !parsed.user) {
+    throw new AuthError(messageFor(body, response.status));
+  }
+
+  await establishSession(parsed.token);
+  return parsed.user;
+}
+
 export async function verifyTotp(challenge: string, code: string): Promise<AuthedUser> {
   const { response, body } = await postJson('/api/auth/2fa/verify', { challenge, code });
 
@@ -146,23 +149,16 @@ export async function verifyTotp(challenge: string, code: string): Promise<Authe
   return parsed.user;
 }
 
-/**
- * The answer to a password submission, now that neither sign-in nor sign-up
- * hands back a session on its own: both end with a code on its way to the
- * player's inbox.
- */
 export interface CodeChallenge {
-  /** Echoed by the server, so the code step never trusts the input field. */
   email: string;
   resendAfterSeconds: number;
   expiresInSeconds: number;
-  /** Present only when the API has no SMTP transport (development). */
   devCode?: string;
 }
 
 async function postJson(
   path: string,
-  payload: unknown,
+  payload: Record<string, unknown>,
   ref?: string | null
 ): Promise<{ response: Response; body: Record<string, unknown> }> {
   const query = ref ? `?ref=${encodeURIComponent(ref)}` : '';
@@ -172,9 +168,10 @@ async function postJson(
     response = await fetch(`${API_URL}${path}${query}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, locale: readStoredLocale() }),
     });
-  } catch {
+  } catch (err) {
+    console.error(`[auth] request to ${API_URL}${path} failed before a response (network or CORS)`, err);
     throw new AuthError('Could not reach the FRIGAT server. Is it running?');
   }
 
@@ -196,24 +193,10 @@ function challengeFrom(
   };
 }
 
-/**
- * What a correct password earns.
- *
- * Two outcomes, because admins and designated accounts skip the email step:
- * either a code is on its way, or the session is already open.
- */
 export type PasswordResult =
   | { requiresOtp: true; challenge: CodeChallenge }
   | { requiresOtp: false; user: AuthedUser };
 
-/**
- * Sign-in step one: submit the password.
- *
- * For a standard player this produces a code in their inbox, which
- * `verifyLoginCode` then exchanges for a session. For an account the server
- * bypasses, the token comes back here and the session is established before
- * this resolves.
- */
 export async function submitPassword(
   credentials: { email: string; password: string; turnstileToken?: string },
   ref?: string | null
@@ -225,10 +208,6 @@ export async function submitPassword(
   const totp = totpChallengeOf(body);
   if (totp) throw new TotpRequiredError(totp);
 
-  // The server decides which path this is. The client reads the token's
-  // presence rather than trusting `requiresOtp` alone, so a malformed bypass
-  // response cannot leave the form believing it is signed in with nothing to
-  // sign in with.
   const parsed = body as AuthResponse;
   if (parsed.token && parsed.user) {
     await establishSession(parsed.token);
@@ -238,10 +217,6 @@ export async function submitPassword(
   return { requiresOtp: true, challenge: challengeFrom(body, credentials.email) };
 }
 
-/**
- * Sign-up step one: validate the address and password, and ask for a code.
- * No account exists until `confirmRegistration` succeeds.
- */
 export async function requestRegistrationCode(
   credentials: { email: string; password: string; turnstileToken?: string },
   ref?: string | null
@@ -257,12 +232,6 @@ export async function requestRegistrationCode(
   return challengeFrom(body, credentials.email);
 }
 
-/**
- * Password reset step one: ask for a code.
- *
- * Succeeds whether or not the address has an account — the server answers
- * identically either way, so nothing here can report "no such user".
- */
 export async function requestPasswordReset(
   email: string,
   turnstileToken?: string
@@ -277,12 +246,6 @@ export async function requestPasswordReset(
   return challengeFrom(body, email);
 }
 
-/**
- * Password reset step two: spend the code and set the new password.
- *
- * Returns the server's confirmation copy. No session comes back — the player
- * signs in with the password they just chose.
- */
 export async function resetPassword(input: {
   email: string;
   code: string;
@@ -297,7 +260,6 @@ export async function resetPassword(input: {
     : 'Password reset successfully. You can now sign in.';
 }
 
-/** Sign-up step two: the code creates the account and opens the session. */
 export async function confirmRegistration(
   email: string,
   code: string,

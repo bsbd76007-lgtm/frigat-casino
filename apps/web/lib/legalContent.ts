@@ -1,35 +1,6 @@
-/**
- * FRIGAT — legal document content.
- *
- * Why these documents live here rather than in locales/*.json, which is where
- * every other string in the app lives:
- *
- *   - They are content, not interface chrome. A lawyer reviewing them needs to
- *     read each document end to end; scattered across 120 keys in a 750-line
- *     dictionary, that is not possible.
- *   - The `en` and `ru` halves are typed as the same shape, so a section that
- *     exists in one language and not the other is a compile error — the same
- *     guarantee `Messages = typeof en` gives the JSON dictionaries.
- *   - Replacing a document wholesale after legal review is one edit here.
- *
- * ── Accuracy ────────────────────────────────────────────────────────────
- * The privacy document describes what this codebase actually stores, read off
- * prisma/schema.prisma rather than copied from a template. Specifically: there
- * is no IP address column, no user-agent column and no advertising identifier
- * anywhere in the schema, so this policy does not claim to collect them. If a
- * future migration adds any, this file must be updated in the same change —
- * an over-broad privacy policy is a misrepresentation just as a too-narrow one
- * is a compliance gap.
- *
- * These are drafts describing live behaviour. They are not a substitute for
- * review by a lawyer qualified in the operator's licensing jurisdiction; the
- * banner rendered above each one says so to the reader.
- */
-
 import { OPERATOR } from '@/lib/legal';
 
 export interface LegalSection {
-  /** Anchor id — footer and in-page navigation link to these. */
   id: string;
   heading: string;
   paragraphs?: readonly string[];
@@ -42,15 +13,10 @@ export interface LegalDocument {
   sections: readonly LegalSection[];
 }
 
-/** Both locales must supply the same document shape. */
 export type LocalisedDocument = { en: LegalDocument; ru: LegalDocument };
 
 const CONTACT_EN = `Write to ${OPERATOR.supportEmail} for account and payment questions, or to ${OPERATOR.privacyEmail} for anything about your personal data.`;
 const CONTACT_RU = `По вопросам аккаунта и платежей пишите на ${OPERATOR.supportEmail}, по вопросам персональных данных — на ${OPERATOR.privacyEmail}.`;
-
-/* ══════════════════════════════════════════════════════════════════════
-   Privacy policy
-   ══════════════════════════════════════════════════════════════════════ */
 
 export const PRIVACY_POLICY: LocalisedDocument = {
   en: {
@@ -287,10 +253,6 @@ export const PRIVACY_POLICY: LocalisedDocument = {
   },
 };
 
-/* ══════════════════════════════════════════════════════════════════════
-   Terms and conditions
-   ══════════════════════════════════════════════════════════════════════ */
-
 export const TERMS_AND_CONDITIONS: LocalisedDocument = {
   en: {
     title: 'Terms and conditions',
@@ -505,10 +467,6 @@ export const TERMS_AND_CONDITIONS: LocalisedDocument = {
     ],
   },
 };
-
-/* ══════════════════════════════════════════════════════════════════════
-   Refund policy
-   ══════════════════════════════════════════════════════════════════════ */
 
 export const REFUND_POLICY: LocalisedDocument = {
   en: {

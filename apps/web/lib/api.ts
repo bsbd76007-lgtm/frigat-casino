@@ -1,24 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Browser API fetcher
- *
- * One place that attaches credentials to an outgoing request, so no caller has
- * to remember. Every request carries both halves of the session:
- *
- *   Authorization: Bearer …   from the localStorage token
- *   credentials: 'include'    so the httpOnly cookie rides along too
- *
- * Sending both is what fixes the 401s on the admin screens. The cookie is set
- * by /api/session and is the only credential a *server* component can read; the
- * localStorage token is the only one that survives a dev server restart or a
- * cookie the browser declined. Either alone leaves a gap; together, a request
- * succeeds if the browser holds a valid session in either store.
- *
- * Client components only — it reads localStorage. Server components must keep
- * reading the cookie via next/headers.
- */
-
 import { API_URL, readStoredToken } from '@/lib/token';
 
 export class ApiError extends Error {
@@ -51,8 +32,6 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     ...init,
     headers,
     credentials: 'include',
-    // Admin data is live; a cached 401 from a previous session would be worse
-    // than useless.
     cache: init.cache ?? 'no-store',
   });
 }

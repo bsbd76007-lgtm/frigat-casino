@@ -10,15 +10,6 @@ import {
   AccountFrozenError,
 } from '../services/ledger.service';
 
-/**
- * Ledger invariants.
- *
- * These are the assertions worth having: every one describes a way the house
- * or the player loses money that a type checker cannot see. They run against a
- * real Postgres because the guarantees under test — atomic debits, unique
- * constraints, transaction rollback — are the database's, not the code's.
- */
-
 let userId: string;
 
 async function seedPlayer(balance: string, opts: { frozen?: boolean } = {}) {
@@ -65,12 +56,6 @@ describe('processBet', () => {
     expect(await getBalance(frozen)).toBe('100');
   });
 
-  /**
-   * The one that matters. Ten simultaneous bets of 20 against a balance of
-   * 100: exactly five may win. A read-then-write debit would let more through
-   * and drive the wallet negative — the classic way a casino pays out money it
-   * never held.
-   */
   it('cannot be raced into an overdraft', async () => {
     const attempts = await Promise.allSettled(
       Array.from({ length: 10 }, () => processBet({ userId, amount: '20', gameType: 'DICE' }))
@@ -110,11 +95,6 @@ describe('processWin', () => {
     expect(await getBalance(userId)).toBe('120');
   });
 
-  /**
-   * A settlement retried after a timeout must not pay twice. The guard is a
-   * unique txHash of `win:<betId>`; this proves the second call is a no-op
-   * rather than a second credit.
-   */
   it('is idempotent when the same bet settles twice', async () => {
     const bet = await processBet({ userId, amount: '10', gameType: 'DICE' });
 

@@ -1,22 +1,3 @@
-/**
- * FRIGAT — Payment routes
- *
- *   POST /api/payments/deposit              open an invoice          (player JWT)
- *   POST /api/payments/withdraw             request a payout         (player JWT)
- *   POST /api/payments/webhook              Cryptomus status update  (MD5 sign)
- *   POST /api/payments/nowpayments/webhook  NOWPayments IPN          (HMAC-SHA512)
- *   GET  /api/payments/history              own deposits/withdrawals (player JWT)
- *   GET  /api/payments/config               supported deposit currencies
- *
- * Deposits open against whichever gateway `config.paymentsProvider` names, but
- * BOTH callbacks stay registered: invoices opened before a provider switch must
- * still be able to settle from the gateway that created them.
- *
- * Both webhooks are deliberately unauthenticated in the JWT sense — a payment
- * gateway has no session and cannot present one. The signature *is* the
- * credential, and it is checked before the body is trusted for anything.
- */
-
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import {
@@ -38,6 +19,7 @@ import {
   InsufficientFundsError,
   InvalidSignatureError,
   PaymentConfigError,
+  WebhookPayloadError,
   PaymentProviderError,
   WalletNotFoundError,
   MIN_WITHDRAWAL_USD,
@@ -46,7 +28,6 @@ import {
 } from '../services/payment.service';
 
 
-/** Positive decimal with at most 8 fraction digits, matching Decimal(18, 8). */
 const AMOUNT_PATTERN = /^\d{1,10}(\.\d{1,8})?$/;
 
 function isValidAmount(value: unknown): value is string {
@@ -133,10 +114,6 @@ export function registerPaymentRoutes(app: FastifyInstance) {
         network,
       });
 
-      // The stake is already reserved, so the header must stop showing money
-      // the player can no longer spend. The socket frame is what useBalance
-      // listens to — returning the balance in this body alone would leave the
-      // header stale until the next game event.
       pushBalanceToUser(identity.userId, result.balance);
       req.log.info(
         {
@@ -144,6 +121,7 @@ export function registerPaymentRoutes(app: FastifyInstance) {
           withdrawalId: result.withdrawalId,
           amount: result.amount,
           awaitingReview: result.review === true,
+          reviewReason: result.reviewReason,
         },
         result.review
           ? 'withdrawal reserved and queued for admin review'
@@ -155,9 +133,6 @@ export function registerPaymentRoutes(app: FastifyInstance) {
         message: result.review
           ? 'Withdrawal request submitted for review.'
           : 'Withdrawal request submitted.',
-        // The details stay on the response: the modal shows the reserved amount
-        // and the balance left, and a client that only reads `success` is free
-        // to ignore them.
         ...result,
       };
     } catch (err) {
@@ -165,18 +140,34 @@ export function registerPaymentRoutes(app: FastifyInstance) {
     }
   });
 
-  // ── Provider webhook ──
-  //
-  // Always answers 200 once the signature checks out, even for an invoice we do
-  // not recognise. Cryptomus retries any non-2xx, and retrying a callback we
-  // will never be able to match is pointless noise. A bad signature gets a 403
-  // and is logged — that is either a misconfiguration or a forgery attempt.
-  app.post<{ Body: Record<string, unknown> }>(
+  const WEBHOOK_BODY_LIMIT = 64 * 1024;
+
+  const rejectUnsigned = (req: FastifyRequest, reply: FastifyReply, provider: string) => {
+    req.log.warn({ ip: req.ip, provider }, 'rejected payment webhook: missing or invalid signature');
+    return reply.code(401).send({ error: 'invalid_signature' });
+  };
+
+  const rejectPayload = (
+    req: FastifyRequest,
+    reply: FastifyReply,
+    provider: string,
+    reason: string
+  ) => {
+    req.log.warn({ ip: req.ip, provider, reason }, 'rejected payment webhook: invalid payload');
+    return reply.code(400).send({ error: 'invalid_payload' });
+  };
+
+  const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+  app.post<{ Body: unknown }>(
     '/api/payments/webhook',
+    { bodyLimit: WEBHOOK_BODY_LIMIT },
     async (req, reply) => {
       const body = req.body;
-      if (!body || typeof body !== 'object') {
-        return reply.code(400).send({ error: 'invalid_body' });
+      if (!isPlainObject(body)) return rejectPayload(req, reply, 'cryptomus', 'not_an_object');
+      if (typeof body.sign !== 'string' || body.sign.length === 0) {
+        return rejectUnsigned(req, reply, 'cryptomus');
       }
 
       try {
@@ -195,48 +186,40 @@ export function registerPaymentRoutes(app: FastifyInstance) {
 
         return reply.code(200).send({ received: true, handled: result.handled });
       } catch (err) {
-        if (err instanceof InvalidSignatureError) {
-          req.log.warn({ ip: req.ip }, 'rejected payment webhook with bad signature');
-          return reply.code(403).send({ error: 'invalid_signature' });
+        if (err instanceof InvalidSignatureError) return rejectUnsigned(req, reply, 'cryptomus');
+        if (err instanceof WebhookPayloadError) {
+          return rejectPayload(req, reply, 'cryptomus', err.reason);
         }
         if (err instanceof PaymentConfigError) {
           req.log.error('payment webhook received but Cryptomus is not configured');
           return reply.code(503).send({ error: 'payments_unavailable' });
         }
-        // Genuine server-side failure: 500 so the provider redelivers and the
-        // deposit is not silently dropped.
         req.log.error({ err }, 'payment webhook processing failed');
         return reply.code(500).send({ error: 'webhook_processing_failed' });
       }
     }
   );
 
-  // ── NOWPayments IPN ──
-  //
-  // Separate from the Cryptomus webhook above because the two sign differently:
-  // Cryptomus puts a `sign` field in the body, NOWPayments sends an HMAC-SHA512
-  // of the sorted body in `x-nowpayments-sig`. One route trying to guess which
-  // scheme applies is a route that can be talked into checking the weaker one.
-  app.post<{ Body: Record<string, unknown> }>(
+  app.post<{ Body: unknown }>(
     '/api/payments/nowpayments/webhook',
+    { bodyLimit: WEBHOOK_BODY_LIMIT },
     async (req, reply) => {
       const body = req.body;
-      if (!body || typeof body !== 'object') {
-        return reply.code(400).send({ error: 'invalid_body' });
+      const signature = req.headers['x-nowpayments-sig'];
+      if (typeof signature !== 'string' || signature.length === 0) {
+        return rejectUnsigned(req, reply, 'nowpayments');
       }
+      if (!isPlainObject(body)) return rejectPayload(req, reply, 'nowpayments', 'not_an_object');
 
       let authentic: boolean;
       try {
-        authentic = verifyIpnSignature(body, req.headers['x-nowpayments-sig']);
+        authentic = verifyIpnSignature(body, signature);
       } catch (err) {
         req.log.error({ err }, 'NOWPayments IPN received but no IPN secret is configured');
         return reply.code(503).send({ error: 'payments_unavailable' });
       }
 
-      if (!authentic) {
-        req.log.warn({ ip: req.ip }, 'rejected NOWPayments IPN with bad signature');
-        return reply.code(403).send({ error: 'invalid_signature' });
-      }
+      if (!authentic) return rejectUnsigned(req, reply, 'nowpayments');
 
       try {
         const result = await handleNowPaymentsIpn(body);
@@ -251,21 +234,17 @@ export function registerPaymentRoutes(app: FastifyInstance) {
 
         return reply.code(200).send({ received: true, handled: result.handled });
       } catch (err) {
-        // 500 so NOWPayments redelivers rather than dropping a paid deposit.
+        if (err instanceof WebhookPayloadError) {
+          return rejectPayload(req, reply, 'nowpayments', err.reason);
+        }
         req.log.error({ err }, 'NOWPayments IPN processing failed');
         return reply.code(500).send({ error: 'webhook_processing_failed' });
       }
     }
   );
 
-  // There are deliberately NO sandbox endpoints. Balances move only through a
-  // verified gateway callback or an audited admin adjustment; an endpoint that
-  // mints money on request is indistinguishable from a bug once it exists, and
-  // gating it on NODE_ENV only moves the mistake one deploy away.
-
   app.get('/api/payments/config', async () => ({
     currencies: SUPPORTED_CURRENCIES,
-    // USD, the same for every coin — see MIN_WITHDRAWAL_USD.
     minWithdrawal: MIN_WITHDRAWAL_USD,
   }));
 
@@ -320,10 +299,6 @@ function replyForPaymentError(
     return reply.code(502).send({ error: 'provider_error', detail: err.message });
   }
   if (err instanceof NowPaymentsError) {
-    // A credential or account problem at the gateway is ours to fix, not the
-    // player's: log the provider's own wording, but answer with a generic
-    // 503 rather than passing its 401/403 through — a payment gateway
-    // rejecting *our* key must never surface as the player being forbidden.
     const credentialProblem = err.status === 401 || err.status === 403;
     if (credentialProblem) {
       req.log.error({ err }, 'NOWPayments rejected our API key — deposits are down');

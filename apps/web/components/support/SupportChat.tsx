@@ -7,20 +7,6 @@ import { useLanguage } from '@/components/providers/LanguageProvider';
 import { apiJson, ApiError } from '@/lib/api';
 import { useInjectedStyles } from '@/lib/useInjectedStyles';
 
-/**
- * FRIGAT — Live support widget
- *
- * A panel only — the sidebar's Support control is the one way in (the floating
- * launcher was removed). Opening it restores the player's open ticket from
- * `GET /api/support/me`, sending posts to `POST /api/support/message`, and
- * `SUPPORT_MESSAGE` frames on the existing game socket stream replies in.
- *
- * The POST response is not appended directly: the same message arrives as a
- * socket frame, and adding both would double it. Frames are keyed by message
- * id and ignored if already present, so a reconnect that replays one is
- * harmless.
- */
-
 export interface SupportMessage {
   id: string;
   ticketId: string;
@@ -34,12 +20,6 @@ interface MeResponse {
   messages: SupportMessage[];
 }
 
-/**
- * Server error codes are wire identifiers, not copy. Mapping them explicitly
- * keeps a raw key like `message_too_long` out of the panel; anything unmapped
- * falls back to the generic line, so a new server code degrades to a sentence
- * rather than leaking itself into the UI.
- */
 const ERROR_KEYS: Record<string, string> = {
   empty_message: 'support.errorEmpty',
   message_too_long: 'support.errorTooLong',
@@ -53,8 +33,6 @@ const ERROR_KEYS: Record<string, string> = {
 const STYLE_ID = 'fg-support-chat-styles';
 
 const CSS = `
-/* Above the dock's z-index, not below it, so the dock cannot punch a hole
-   through the open panel. */
 .sup__panel { position: fixed; right: 24px; bottom: 24px; z-index: 1000;
   display: flex; flex-direction: column; width: min(360px, calc(100vw - 32px));
   height: min(520px, calc(100vh - 120px));
@@ -103,7 +81,6 @@ const CSS = `
 `;
 
 export interface SupportChatProps {
-  /** Lets the sidebar's Support control open this panel from outside. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -115,7 +92,6 @@ export function SupportChat({ open: openProp, onOpenChange }: SupportChatProps =
   const { token, socket } = useGameSocket();
   const { subscribe } = socket;
 
-  // Own state, mirrored to the parent when it is controlling.
   const [openState, setOpenState] = useState(false);
   const open = openProp ?? openState;
   const setOpen = useCallback(
@@ -132,15 +108,12 @@ export function SupportChat({ open: openProp, onOpenChange }: SupportChatProps =
 
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  /** Adds a message unless its id is already on screen. */
   const absorb = useCallback((incoming: SupportMessage) => {
     setMessages((current) =>
       current.some((m) => m.id === incoming.id) ? current : [...current, incoming]
     );
   }, []);
 
-  // Live replies. Subscribed whether or not the panel is open, so the thread is
-  // current the moment it is reopened.
   useEffect(() => {
     if (!token) return;
     return subscribe('SUPPORT_MESSAGE', (data) => {
@@ -150,7 +123,6 @@ export function SupportChat({ open: openProp, onOpenChange }: SupportChatProps =
     });
   }, [subscribe, token, absorb]);
 
-  // Restore the thread when the panel opens.
   useEffect(() => {
     if (!open || !token) return;
     let active = true;
@@ -160,14 +132,12 @@ export function SupportChat({ open: openProp, onOpenChange }: SupportChatProps =
         setMessages(body.messages ?? []);
       })
       .catch(() => {
-        /* an empty thread is the correct fallback */
       });
     return () => {
       active = false;
     };
   }, [open, token]);
 
-  // Pin to the newest message.
   useEffect(() => {
     if (!open) return;
     const node = bodyRef.current;
@@ -180,7 +150,6 @@ export function SupportChat({ open: openProp, onOpenChange }: SupportChatProps =
     setSending(true);
     setError(null);
     try {
-      // The socket frame delivers the message; `absorb` dedupes if it wins.
       const body = await apiJson<{ message: SupportMessage }>('api/support/message', {
         method: 'POST',
         body: JSON.stringify({ text }),
@@ -198,7 +167,6 @@ export function SupportChat({ open: openProp, onOpenChange }: SupportChatProps =
     }
   }, [draft, sending, absorb, t]);
 
-  // Support is tied to an account, so there is nothing to show signed out.
   if (!token) return null;
 
   if (!open) return null;
@@ -261,7 +229,6 @@ export function SupportChat({ open: openProp, onOpenChange }: SupportChatProps =
           disabled={sending}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
-            // Enter sends; Shift+Enter is a newline, as in every chat client.
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
               void send();
@@ -269,9 +236,6 @@ export function SupportChat({ open: openProp, onOpenChange }: SupportChatProps =
           }}
         />
         <button type="submit" className="sup__send" disabled={sending || !draft.trim()}>
-          {/* The first message is also what opens the ticket, which is the one
-              send that does real work server-side — say so rather than showing
-              the same "Sending…" as every later message. */}
           {sending
             ? t(messages.length === 0 ? 'support.starting' : 'support.sending')
             : t('support.send')}

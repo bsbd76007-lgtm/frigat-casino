@@ -1,17 +1,3 @@
-/**
- * FRIGAT — Live support
- *
- *   POST /api/support/message   send a message (player or admin)
- *   GET  /api/support/me        the caller's own open ticket + history
- *   GET  /api/support/tickets   the admin queue (ADMIN only)
- *   POST /api/support/close     close a ticket (ADMIN only)
- *
- * Persist first, then broadcast: the socket frame is a courtesy for clients
- * that happen to be connected, never the record. A dropped frame costs a
- * refresh; a message that was broadcast but not written would be lost for
- * good, and support threads are the last place to be casual about that.
- */
-
 import type { FastifyInstance } from 'fastify';
 import { SupportSender, SupportStatus } from '@prisma/client';
 
@@ -19,15 +5,12 @@ import { prisma } from '../config/prisma';
 import { identityFromRequest, requireAdmin } from '../middleware/auth';
 import { pushSupportEvent } from '../websocket/socket.server';
 
-/** Long enough for a real problem description, short enough to bound a row. */
 const MAX_TEXT = 2000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 interface SendBody {
   text?: string;
-  /** Admins must name the ticket they are replying to. */
   ticketId?: string;
-  /** Only used when a signed-out visitor opens a ticket. */
   email?: string;
 }
 
@@ -48,10 +31,6 @@ function messageView(row: {
 }
 
 export function registerSupportRoutes(app: FastifyInstance) {
-  /**
-   * One open ticket per player. Reusing it is what makes the widget a
-   * conversation instead of a stack of one-line tickets.
-   */
   async function openTicketFor(userId: string, email: string) {
     const existing = await prisma.supportTicket.findFirst({
       where: { userId, status: SupportStatus.OPEN },
@@ -70,11 +49,6 @@ export function registerSupportRoutes(app: FastifyInstance) {
     if (!text) return reply.code(400).send({ error: 'empty_message' });
     if (text.length > MAX_TEXT) return reply.code(400).send({ error: 'message_too_long' });
 
-    // ── Admin reply ──
-    // Dispatched on intent, not on role. A named ticket is a staff reply; no
-    // ticket is someone opening their own thread. Branching on the role alone
-    // meant an admin using the player widget posted into this arm with nothing
-    // to reply to and got `ticket_required` — staff have player accounts too.
     const ticketId = String(req.body?.ticketId ?? '');
 
     if (identity?.role === 'ADMIN' && ticketId) {
@@ -85,7 +59,6 @@ export function registerSupportRoutes(app: FastifyInstance) {
         prisma.supportMessage.create({
           data: { ticketId, sender: SupportSender.ADMIN, text },
         }),
-        // Bumps updatedAt, which is how the queue sorts.
         prisma.supportTicket.update({
           where: { id: ticketId },
           data: { status: SupportStatus.OPEN },
@@ -96,9 +69,7 @@ export function registerSupportRoutes(app: FastifyInstance) {
       return { message: messageView(message) };
     }
 
-    // ── Player message ──
     if (!identity) {
-      // A guest still gets through, but only with somewhere to reply to.
       const email = String(req.body?.email ?? '').trim().toLowerCase();
       if (!EMAIL.test(email)) return reply.code(400).send({ error: 'email_required' });
 
@@ -145,7 +116,6 @@ export function registerSupportRoutes(app: FastifyInstance) {
     return { ticketId: ticket.id, message: messageView(message) };
   });
 
-  /** The caller's own thread — the widget restores from this on open. */
   app.get('/api/support/me', async (req, reply) => {
     const identity = identityFromRequest(req);
     if (!identity) return reply.code(401).send({ error: 'unauthorized' });
@@ -163,10 +133,6 @@ export function registerSupportRoutes(app: FastifyInstance) {
     };
   });
 
-  /**
-   * The admin queue. Open tickets by default, newest activity first, each with
-   * its full history so selecting a thread needs no second round trip.
-   */
   app.get<{ Querystring: { status?: string; take?: string } }>(
     '/api/support/tickets',
     { preHandler: requireAdmin },

@@ -1,20 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Admin access gate (client side)
- *
- * Replaces the layout's hard `redirect('/login')` with a rendered refusal. The
- * redirect was the loop: a signed-in non-admin was sent to /login, signed in
- * successfully, came back, and was sent away again. Telling them "not an
- * administrator" on the page ends it in one hop — signing in *again* was never
- * going to change the answer.
- *
- * This is UX, not a security boundary. It reads the JWT without verifying the
- * signature, which a user can trivially forge; what actually protects admin
- * data is `requireAdmin` on the Fastify API, which re-authorises every request
- * and never sees this component.
- */
-
 import {
   createContext,
   useContext,
@@ -86,8 +71,6 @@ export function AdminGate({
     let cancelled = false;
 
     (async () => {
-      // The cookie is httpOnly, so only the server can read it for us. It
-      // answers 200 with a null user when there is no session — never a 401.
       let user: GateUser | null = null;
       try {
         const response = await fetch('/api/session', { cache: 'no-store' });
@@ -96,11 +79,8 @@ export function AdminGate({
           user = body.user ?? null;
         }
       } catch {
-        /* offline or dev server restarting — fall through to the token */
       }
 
-      // Fallback for the local-dev case where the cookie was never set (or was
-      // dropped by a restart) but the sign-in token is still in localStorage.
       if (!user) user = decodeToken(readStoredToken());
 
       if (cancelled) return;
@@ -155,13 +135,6 @@ export function AdminGate({
   );
 }
 
-/**
- * The signed-in admin's id, for the sidebar footer.
- *
- * Client-side on purpose: in development the id may come from the stored
- * token rather than a cookie the server component could read, so the server's
- * value is only a head start and this is the authoritative display.
- */
 export function AdminWhoId() {
   const user = useAdminSession();
   return <code className="adm-side__who-id">{user?.id ?? '—'}</code>;

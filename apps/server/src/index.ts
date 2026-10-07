@@ -9,14 +9,6 @@ import { registerSocketServer } from './websocket/socket.server';
 import { registerSessionGuard } from './middleware/auth';
 import { registerRoutes } from './routes';
 
-/**
- * Builds the fully-wired app without binding a port.
- *
- * Split out of bootstrap so tests can drive real routes through
- * `app.inject()` — same CORS, same hooks, same handlers, no socket. Anything
- * registered here is therefore covered by the integration suite; anything
- * added only in bootstrap is not.
- */
 export async function buildApp(options: { logger?: boolean } = {}) {
   const app = Fastify({
     logger: options.logger === false ? false : {
@@ -28,21 +20,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     },
   });
 
-  // Browser calls come from the Next app on another origin. The allow-list is
-  // explicit — a wildcard here would let any site read admin JSON using a
-  // victim admin's token, and `credentials: true` makes a wildcard illegal in
-  // every browser anyway.
-  //
-  // Resolved per request rather than handed in as a static array so a rejected
-  // origin can be logged: a frontend that has been deployed to a new URL fails
-  // as a silent browser-side CORS error with nothing in the server log to say
-  // why, and that is a genuinely expensive hour to lose.
   await app.register(cors, {
     origin(origin, cb) {
-      // Requests with no Origin header are not browser cross-site calls:
-      // gateway webhooks, uptime probes and curl all arrive this way. CORS
-      // exists to stop one *site* spending another site's credentials, so
-      // there is nothing here to withhold.
       if (!origin) return cb(null, true);
       if (config.webOrigins.includes(origin)) return cb(null, true);
 
@@ -50,37 +29,14 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         { origin, allowed: config.webOrigins },
         'CORS: rejected an origin that is not on the allow-list'
       );
-      // `false`, not an error: the response simply carries no CORS headers and
-      // the browser blocks it. Throwing would turn a misconfigured origin into
-      // a 500 and bury the cause.
       cb(null, false);
     },
     credentials: true,
-    // PUT and OPTIONS join the list the routes actually use: OPTIONS so the
-    // preflight reply advertises itself, PUT so adding one later is not a
-    // mystery CORS failure.
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    // The web app sends exactly these two; anything else should have to be
-    // added here deliberately.
     allowedHeaders: ['Content-Type', 'Authorization'],
-    // Cache the preflight for a day — every authenticated call is preceded by
-    // one, and the session guard below costs a database round trip.
     maxAge: 86_400,
   });
 
-  /**
-   * Response hardening headers.
-   *
-   * Written by hand rather than pulling in Helmet: this service answers JSON
-   * and upgrades WebSockets, so most of Helmet's surface (CSP for documents,
-   * DNS prefetch, IE download options) is inert here, and a short explicit list
-   * is easier to audit than a plugin's defaults.
-   *
-   * `frame-ancestors 'none'` and X-Frame-Options both appear because the API
-   * should never be framed and the two are read by different generations of
-   * browser. HSTS is production-only: sending it over plain HTTP in local
-   * development would pin localhost to https for six months.
-   */
   app.addHook('onSend', async (_req, reply, payload) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('X-Frame-Options', 'DENY');
@@ -90,8 +46,6 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       'Content-Security-Policy',
       "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
     );
-    // Nothing here is a browser-cacheable document, and several endpoints
-    // return balances — a shared cache holding one player's is worse than slow.
     reply.header('Cache-Control', 'no-store');
     if (config.env === 'production') {
       reply.header('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
@@ -100,7 +54,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   });
 
   await app.register(websocket, {
-    options: { maxPayload: 1 << 20 /* 1 MiB */ },
+    options: { maxPayload: 1 << 20 },
   });
 
   app.get('/', async () => ({
@@ -115,9 +69,6 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     return { status: 'ready' };
   });
 
-  // Before every route: verifies the token's signature *and* that its
-  // tokenVersion still matches the account. Registered here rather than per
-  // route so a new endpoint cannot forget it.
   registerSessionGuard(app);
 
   registerRoutes(app);
@@ -148,10 +99,6 @@ async function bootstrap() {
   app.log.info(`Frigat server listening on ${config.host}:${config.port}`);
 }
 
-// Only when this file *is* the process entry point. Importing it for
-// `buildApp` — which the integration tests do — must not bind a port or
-// install signal handlers, or every test run would start a real server and
-// fight whatever is already on :4000.
 if (require.main === module) {
   bootstrap().catch((err) => {
      

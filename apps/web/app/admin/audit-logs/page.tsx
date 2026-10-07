@@ -1,12 +1,3 @@
-/**
- * FRIGAT — Audit logs
- *
- * Read-only view of AdminAuditLog: every balance adjustment, role change,
- * freeze, withdrawal decision and risk-config change, with the acting admin
- * and the reason given. Entries are written inside the same transaction as the
- * action itself, so this trail cannot fall out of step with what happened.
- */
-
 import { cookies } from 'next/headers';
 
 import { AuditTable, type AuditEntry } from '@/app/admin/audit-logs/AuditTable';
@@ -26,7 +17,7 @@ interface AuditResponse {
 }
 
 async function loadAudit(params: { action?: string; q?: string; skip: number }) {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const base = API_URL;
   const search = new URLSearchParams({ take: '50', skip: String(params.skip) });
   if (params.action) search.set('action', params.action);
@@ -45,10 +36,11 @@ async function loadAudit(params: { action?: string; q?: string; skip: number }) 
 }
 
 export default async function AuditLogsPage({
-  searchParams,
+  searchParams: pendingSearchParams,
 }: {
-  searchParams: { action?: string; q?: string; skip?: string };
+  searchParams: Promise<{ action?: string; q?: string; skip?: string }>;
 }) {
+  const searchParams = await pendingSearchParams;
   const result = await loadAudit({
     action: searchParams.action,
     q: searchParams.q?.trim(),

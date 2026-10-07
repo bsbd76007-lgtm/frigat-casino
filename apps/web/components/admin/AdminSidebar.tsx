@@ -108,7 +108,6 @@ export function AdminSidebar({ adminId }: { adminId?: string | null }) {
     try {
       setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === '1');
     } catch {
-      /* no-op */
     }
   }, []);
 
@@ -118,7 +117,6 @@ export function AdminSidebar({ adminId }: { adminId?: string | null }) {
       try {
         window.localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
       } catch {
-        /* no-op */
       }
       return next;
     });
@@ -140,9 +138,6 @@ export function AdminSidebar({ adminId }: { adminId?: string | null }) {
       data-collapsed={collapsed ? 'true' : 'false'}
     >
       <div className="adm-side__brand">
-        {/* Wordmark only. The frigat-model asset already carries the word
-            "FRIGAT" under its monogram, so pairing it with a text label
-            printed the brand name twice in a 240px column. */}
         <Link href="/admin/dashboard" className="adm-side__mark">
           <span className="adm-side__word">{collapsed ? 'F' : 'Frigat'}</span>
         </Link>
@@ -195,8 +190,6 @@ export function AdminSidebar({ adminId }: { adminId?: string | null }) {
         {!collapsed && (
           <div className="adm-side__who">
             <span className="adm-side__who-role">Administrator</span>
-            {/* Falls back to the client session when the server could not read
-                the cookie, which is the common case in development. */}
             {adminId ? <code className="adm-side__who-id">{adminId}</code> : <AdminWhoId />}
           </div>
         )}

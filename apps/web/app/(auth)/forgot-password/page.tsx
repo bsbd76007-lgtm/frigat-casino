@@ -1,17 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Forgot password
- *
- * Two steps on one page: ask for a code, then spend it together with the new
- * password. The code and the password are submitted in the same request, so a
- * verified code is never left sitting around waiting for a second form — it is
- * spent at the moment it is used, or not at all.
- *
- * Step one never reports whether an address has an account, because the server
- * does not tell it. The confirmation copy is deliberately the same either way.
- */
-
 import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -37,10 +25,10 @@ import {
   type TurnstileHandle,
 } from '@/components/auth/Turnstile';
 
-/** How long the success notice shows before the player lands back on sign-in. */
 const REDIRECT_DELAY_MS = 2200;
 
 import { useLanguage } from '@/components/providers/LanguageProvider';
+import { PasswordInput } from '@/components/auth/PasswordInput';
 
 function ForgotPasswordForm() {
   const { t } = useLanguage();
@@ -64,8 +52,6 @@ function ForgotPasswordForm() {
   const code = digits.join('');
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 
-  // Resend countdown, anchored to a deadline rather than decremented blindly so
-  // a backgrounded tab does not drift out of step with the server's cooldown.
   useEffect(() => {
     if (cooldown <= 0) return;
     const deadline = Date.now() + cooldown * 1000;
@@ -75,7 +61,6 @@ function ForgotPasswordForm() {
       if (left <= 0) clearInterval(timer);
     }, 250);
     return () => clearInterval(timer);
-    // Restarted only when a new cooldown is issued.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cooldown === 0]);
 
@@ -86,7 +71,6 @@ function ForgotPasswordForm() {
     []
   );
 
-  /** Step one. Succeeds identically whether or not the address is registered. */
   const requestCode = async (event: FormEvent) => {
     event.preventDefault();
     if (busy || !emailValid) return;
@@ -95,8 +79,6 @@ function ForgotPasswordForm() {
     setError(null);
     try {
       const result = await requestPasswordReset(email.trim().toLowerCase(), turnstileToken);
-      // Step one's widget unmounts with the form; clearing the token stops a
-      // spent value being sent while step two's fresh widget is still solving.
       setTurnstileToken('');
       setChallenge(result);
       setDigits(emptyDigits());
@@ -105,13 +87,11 @@ function ForgotPasswordForm() {
     } catch (err) {
       setError(err instanceof AuthError ? err.message : 'Could not send a reset code.');
     } finally {
-      // Single-use token: spent by the attempt whatever the outcome.
       turnstileRef.current?.reset();
       setBusy(false);
     }
   };
 
-  /** Re-requests a code, restarting the wait. */
   const resendCode = async () => {
     if (busy || cooldown > 0) return;
     setBusy(true);
@@ -130,11 +110,6 @@ function ForgotPasswordForm() {
     }
   };
 
-  /**
-   * Step two. Deliberately *not* wired to `onComplete` of the digit boxes: the
-   * password fields below still need filling, and auto-submitting on the sixth
-   * digit would spend the code against an empty password every time.
-   */
   const submitReset = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
@@ -162,8 +137,6 @@ function ForgotPasswordForm() {
           newPassword: password,
         });
         setDone(message);
-        // Nothing is signed in by a reset — the new password is proven by using
-        // it, so the player lands back on the sign-in form.
         redirectTimer.current = setTimeout(() => router.replace('/login'), REDIRECT_DELAY_MS);
       } catch (err) {
         setError(err instanceof AuthError ? err.message : 'Could not reset your password.');
@@ -175,7 +148,6 @@ function ForgotPasswordForm() {
     [busy, challenge, code, password, confirm, passwordReady, router]
   );
 
-  // ── Done ──
   if (done) {
     return (
       <div className="auth__card">
@@ -191,7 +163,6 @@ function ForgotPasswordForm() {
     );
   }
 
-  // ── Step two: code + new password ──
   if (challenge) {
     return (
       <div className="auth__card">
@@ -218,8 +189,6 @@ function ForgotPasswordForm() {
             idPrefix="reset"
             digits={digits}
             onDigitsChange={setDigits}
-            // The form has more to fill in, so a complete code just moves focus
-            // on rather than submitting.
             onComplete={() => document.getElementById('reset-password')?.focus()}
             disabled={busy}
             label={t('auth.resetCodeLabel')}
@@ -229,10 +198,9 @@ function ForgotPasswordForm() {
             <label className="auth__label" htmlFor="reset-password">
               {t('auth.newPassword')}
             </label>
-            <input
+            <PasswordInput
               id="reset-password"
               className="auth__input"
-              type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="••••••••"
@@ -253,10 +221,9 @@ function ForgotPasswordForm() {
             <label className="auth__label" htmlFor="reset-confirm">
               {t('auth.confirmNewPassword')}
             </label>
-            <input
+            <PasswordInput
               id="reset-confirm"
               className="auth__input"
-              type="password"
               value={confirm}
               onChange={(event) => setConfirm(event.target.value)}
               placeholder="••••••••"
@@ -275,8 +242,6 @@ function ForgotPasswordForm() {
           </button>
         </form>
 
-        {/* Mounted for the resend control, which goes back through the guarded
-            request route and needs a token of its own. */}
         <Turnstile
           ref={turnstileRef}
           onToken={setTurnstileToken}
@@ -314,7 +279,6 @@ function ForgotPasswordForm() {
     );
   }
 
-  // ── Step one: request a code ──
   return (
     <div className="auth__card">
       <span className="auth__brand">FRIGAT</span>

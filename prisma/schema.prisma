@@ -1,7 +1,3 @@
-// FRIGAT — PostgreSQL Schema
-// All monetary values use Decimal(18, 8) to prevent floating-point drift.
-// Balance mutations MUST occur inside prisma.$transaction (see ledger.service.ts).
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,8 +6,6 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
-// ─────────────────────────────────────────────
 
 enum Role {
   USER
@@ -23,20 +17,9 @@ enum TransactionType {
   WITHDRAWAL
   BET
   WIN
-  /// RevShare credit to a referrer. Lands in Wallet.affiliateBalance, NOT
-  /// Wallet.balance — see the note on that field.
   AFFILIATE_REWARD
-  /// Affiliate sweeping earnings into their wagerable balance. An internal
-  /// transfer between two columns of one wallet, so it is NOT a DEPOSIT —
-  /// counting it as one would inflate deposit reporting with money that never
-  /// entered the platform.
   AFFILIATE_CLAIM
-  /// Daily streak cashback — retired with the win streak; kept because
-  /// historical rows reference it and PostgreSQL cannot drop an enum value.
   BONUS_CASHBACK
-  /// Deposit bonus (a percentage of one of the player's first deposits). Its
-  /// own type so it is never counted as money that entered the platform, and
-  /// so the withdrawal wagering check can find the latest one.
   DEPOSIT_BONUS
 }
 
@@ -44,22 +27,11 @@ enum TransactionStatus {
   PENDING
   COMPLETED
   FAILED
-  /// Withdrawn by the player or rejected before it moved money. Distinct from
-  /// FAILED, which means the transfer was attempted and did not succeed — the
-  /// two need separating for reconciliation and for support to answer "where
-  /// did my withdrawal go".
   CANCELED
 }
 
-/// Lifecycle of a Cryptomus invoice or payout, mirroring the provider's own
-/// `status` strings. Kept separate from TransactionStatus because the gateway
-/// has states the ledger does not care about (a partially-paid invoice is not
-/// a failed one, but it is not a credit either).
 enum CryptoPaymentStatus {
   PENDING
-  /// Reserved and waiting on a human, not on a gateway. Distinct from PENDING
-  /// so the admin queue can tell "nobody has looked at this" apart from "the
-  /// provider is still working on it" — the two need different chasing.
   PENDING_ADMIN_REVIEW
   CONFIRMING
   CONFIRMED
@@ -71,7 +43,6 @@ enum CryptoPaymentStatus {
   FAILED
 }
 
-/// Lifecycle of a giveaway. COMPLETED is terminal and set by the draw.
 enum RaffleStatus {
   ACTIVE
   COMPLETED
@@ -91,58 +62,32 @@ enum GameType {
   AVIA
 }
 
-// ─────────────────────────────────────────────
-
 model User {
   id           String   @id @default(cuid())
   telegramId   String?  @unique
   email        String   @unique
-  passwordHash String
-  /// Bumped whenever every existing session must stop working — a password
-  /// reset or change. It is signed into each JWT and compared on every
-  /// authenticated request, so raising it invalidates tokens already issued.
-  /// Without this, resetting a stolen password leaves the thief signed in.
+  passwordHash String?
+  googleId     String?  @unique
   tokenVersion Int      @default(0)
   role         Role     @default(USER)
   createdAt    DateTime @default(now())
 
-  // Account freeze. Enforced in ledger.service.processBet (the single money-out
-  // gate) and at WebSocket connect — a flag nothing checks would be worse than
-  // no freeze at all, because it would look like the account was stopped.
   frozen       Boolean   @default(false)
   frozenAt     DateTime?
   frozenReason String?
 
-  // ── Two-factor sign-in (authenticator app, RFC 6238) ──
-  /// AES-256-GCM sealed with a key derived from the server secret — never the
-  /// raw base32. Set at setup, and only trusted once `totpEnabled` is true:
-  /// a secret the player never confirmed with a valid code protects nothing.
   totpSecret      String?
   totpEnabled     Boolean   @default(false)
-  /// The last 30-second step a code was accepted for. A code is valid for its
-  /// step and one either side, so without this it could be replayed for up to
-  /// a minute and a half by anyone who watched it being typed.
   totpLastStep    Int?
-  /// HMAC-SHA256 of each unused backup code. Spent codes are removed.
   totpBackupCodes String[]  @default([])
 
-  // ── Telegram link (trial: stored and shown, no bot verifies it yet) ──
   telegramUsername String?
   telegramLinkedAt DateTime?
 
-  /// Set when the player deleted the account. The row stays — settled bets
-  /// and ledger entries reference it — but it is scrubbed, frozen and every
-  /// session revoked. See POST /api/account/delete.
   deletedAt DateTime?
 
-  // ── RevShare referral engine ──
-  /// This user's own code, handed out to recruit others (?ref=<code>).
   referralCode       String  @unique @default(cuid())
-  /// Who recruited this user. Set once at registration and never reassigned —
-  /// a mutable attribution would let a later ?ref= steal an existing downline.
   referredById       String?
-  /// Share of the house edge on a downline's bets paid to THIS user as the
-  /// referrer. Per-user so individual affiliates can be given a custom cut.
   revSharePercentage Decimal @default(10.00) @db.Decimal(5, 2)
 
   referredBy User?  @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
@@ -150,38 +95,18 @@ model User {
 
   lastDailyWheelSpinAt DateTime?
 
-  // ── Daily check-in ──
-  /// Distinct from the play streak below, which is driven by settled bets.
-  /// Checking in is a claim the player makes; playing is something they did.
-  /// Sharing one counter would let a check-in inflate a wagering streak.
   lastCheckInAt DateTime?
-  /// Consecutive UTC days checked in. Drives the reward ladder.
   checkInStreak Int       @default(0)
 
   promoRedemptions PromoRedemption[]
   raffleTickets    RaffleTicket[]
   raffleEntries    RaffleEntry[]
 
-  // ── Daily play streak ──
-  /// Consecutive calendar days with at least one settled bet.
   currentStreak     Int       @default(0)
-  /// High-water mark, kept for display after a break.
   longestStreak     Int       @default(0)
-  /// Start of the last UTC day the player bet on. Date-only semantics: two bets
-  /// in one day must not advance the streak twice, and the comparison has to be
-  /// stable regardless of the hour a player bets at.
   lastPlayedDate    DateTime?
-  /// Price to reinstate a broken streak, priced when the break is detected.
-  /// Decimal, not Float: this is charged against a real balance, and a float
-  /// cannot hold a money value exactly.
   streakRestoreCost Decimal   @default(0) @db.Decimal(18, 8)
-  /// The streak a paid restore would bring back. Held separately so the offer
-  /// survives `currentStreak` being zeroed at the break.
   restorableStreak  Int       @default(0)
-  /// When the break was recorded. The restore window is measured from here,
-  /// NOT from lastPlayedDate — recordPlay sets lastPlayedDate to today in the
-  /// same call that detects the break, so a window keyed off it would compute
-  /// a zero-day gap and the offer could never be shown.
   streakBrokenAt    DateTime?
 
   wallets        Wallet[]
@@ -202,10 +127,6 @@ model Wallet {
   id               String   @id @default(cuid())
   userId           String
   balance          Decimal  @default(0) @db.Decimal(18, 8)
-  /// Accrued RevShare earnings, held separately from the wagerable `balance`.
-  /// Consequence: summing this wallet's transactions no longer reconciles to
-  /// `balance` alone — AFFILIATE_REWARD rows settle against this column
-  /// instead. Any reconciliation job must net them out per type.
   affiliateBalance Decimal  @default(0.00) @db.Decimal(18, 8)
   currency         String   @default("USD")
   updatedAt        DateTime @updatedAt
@@ -224,15 +145,8 @@ model Transaction {
   amount     Decimal           @db.Decimal(18, 8)
   status     TransactionStatus @default(PENDING)
   txHash     String?           @unique
-  /// Identifier at the payment provider — a Cryptomus invoice uuid for a
-  /// deposit, a payout id for a withdrawal. Separate from `txHash`, which is
-  /// the on-chain hash: a pending invoice has a provider id long before any
-  /// chain confirms it, and reconciliation needs to match on the provider's
-  /// reference, not the blockchain's.
   providerId String?
   createdAt  DateTime          @default(now())
-  /// Set on every status transition, so PENDING → COMPLETED is timestamped.
-  /// `createdAt` alone cannot answer how long a withdrawal sat unprocessed.
   updatedAt  DateTime          @default(now()) @updatedAt
 
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
@@ -242,48 +156,23 @@ model Transaction {
   @@index([providerId])
 }
 
-/// A Cryptomus deposit invoice.
-///
-/// This is the *gateway* record, not the money. Crediting the wallet stays the
-/// ledger's job: when a webhook confirms payment, payment.service credits the
-/// balance through the ledger and stores the resulting Transaction id in
-/// `transactionId`. That column is therefore also the idempotency key — a
-/// non-null value means this invoice has already been credited, and Cryptomus
-/// retries webhooks until it gets a 200.
 model Payment {
   id       String              @id @default(cuid())
   userId   String
-  /// Invoice amount in `currency`, as requested by the player.
   amount   Decimal             @db.Decimal(18, 8)
-  /// Asset the player pays in (USDT, BTC, ETH, LTC).
   currency String
   status   CryptoPaymentStatus @default(PENDING)
 
-  /// Gateway that opened this invoice: "CRYPTOMUS" or "NOWPAYMENTS". Stored as
-  /// text rather than an enum because PostgreSQL cannot drop an enum value in
-  /// place, and a payments provider is exactly the kind of thing that gets
-  /// swapped. Existing rows predate NOWPayments, hence the Cryptomus default.
   provider String @default("CRYPTOMUS")
 
-  /// The gateway's own invoice id. Unique so a replayed webhook cannot open a
-  /// second row for the same invoice.
   paymentId String  @unique
-  /// On-chain transaction hash, once the network confirms it.
   txHash    String?
 
-  /// Deposit address and hosted checkout page returned by Cryptomus. Shown in
-  /// the deposit modal (QR + link); nullable because a freshly created invoice
-  /// may not have an address until the player picks a network.
   address String?
   payUrl  String?
 
-  /// Amount actually received on-chain, which is not always what was invoiced
-  /// (PAID_OVER / WRONG_AMOUNT). The wallet is credited from this when present,
-  /// never from `amount` — crediting the invoiced figure for an underpayment
-  /// would hand out money that never arrived.
   paidAmount Decimal? @db.Decimal(18, 8)
 
-  /// Ledger row created when this deposit was credited. Null until confirmed.
   transactionId String? @unique
 
   createdAt DateTime @default(now())
@@ -295,35 +184,24 @@ model Payment {
   @@index([status])
 }
 
-/// A Cryptomus payout request.
-///
-/// Funds are debited when the request is made (via ledger.requestWithdrawal),
-/// so `transactionId` is set from the start — the PENDING ledger row *is* the
-/// hold. A provider failure refunds by rejecting that row rather than by
-/// incrementing a balance here.
 model Withdrawal {
   id       String              @id @default(cuid())
   userId   String
   amount   Decimal             @db.Decimal(18, 8)
+  payoutAmount Decimal?        @db.Decimal(18, 8)
+  exchangeRateUsdt Decimal?    @db.Decimal(24, 12)
+  exchangeRateSource String?
   currency String
   status   CryptoPaymentStatus @default(PENDING)
 
-  /// Who is responsible for sending this: a gateway ("CRYPTOMUS",
-  /// "NOWPAYMENTS") or "MANUAL_ADMIN" when it is queued for an operator.
   provider String @default("CRYPTOMUS")
 
-  /// Gateway payout id. Null while waiting on a gateway to accept the payout,
-  /// and permanently null for MANUAL_ADMIN payouts, which never go to one.
   paymentId String? @unique
   txHash    String?
 
-  /// Destination wallet address supplied by the player.
   address String
-  /// Chain the payout is sent on (e.g. TRON for USDT). Cryptomus requires it
-  /// whenever a currency exists on more than one network.
   network String?
 
-  /// The PENDING WITHDRAWAL ledger row holding the reserved funds.
   transactionId String @unique
 
   createdAt DateTime @default(now())
@@ -335,12 +213,6 @@ model Withdrawal {
   @@index([status])
 }
 
-/// One settled VIP rakeback claim.
-///
-/// Exists to make rakeback non-repeatable. Entitlement is a function of
-/// lifetime house edge, which only grows — without a record of what has
-/// already been paid out, a player could claim the same edge on every page
-/// load. getVipStatus subtracts the sum of these rows from the entitlement.
 model RakebackClaim {
   id        String   @id @default(cuid())
   userId    String
@@ -401,8 +273,6 @@ model AdminAuditLog {
   @@index([targetUserId])
 }
 
-/// Singleton row (id is always "singleton") holding platform-wide switches.
-/// Read on every bet through a short-lived cache in riskConfig.service.ts.
 model PlatformConfig {
   id                 String   @id @default("singleton")
   maintenanceMode    Boolean  @default(false)
@@ -411,26 +281,14 @@ model PlatformConfig {
   updatedBy          String?
 }
 
-/// Per-game wagering limits. Absent row = fall back to the shared BET_LIMITS.
-/// Enforced in ledger.service.processBet (stake) and at payout (maxWin).
 model GameLimit {
   gameType  GameType @id
   minBet    Decimal  @db.Decimal(18, 8)
   maxBet    Decimal  @db.Decimal(18, 8)
-  /// Ceiling on a single settled payout. 0 = uncapped.
   maxWin    Decimal  @default(0) @db.Decimal(18, 8)
   updatedAt DateTime @updatedAt
   updatedBy String?
 }
-
-// ─────────────────────────────────────────────
-// Live support
-//
-// One open ticket per user at a time: the widget reuses it so a conversation
-// stays a conversation rather than fragmenting into a ticket per message.
-// `userId` is nullable so a signed-out visitor can still reach support, in
-// which case the email they type is the only way back to them.
-// ─────────────────────────────────────────────
 
 enum SupportStatus {
   OPEN
@@ -453,7 +311,6 @@ model SupportTicket {
 
   messages SupportMessage[]
 
-  // The admin queue reads open tickets newest-activity-first.
   @@index([status, updatedAt])
   @@index([userId, status])
 }
@@ -466,78 +323,34 @@ model SupportMessage {
   text      String
   createdAt DateTime      @default(now())
 
-  // Every read is "this ticket's messages, oldest first".
   @@index([ticketId, createdAt])
 }
 
-/// A one-time login code sent to an email address.
-///
-/// The code itself is never stored. `codeHash` is an HMAC-SHA256 of the digits
-/// keyed by the server secret: a 6-digit code has only a million values, so a
-/// leaked table of plaintext codes would be a table of live credentials, and
-/// even unsalted digests would fall to a rainbow table in seconds. HMAC with a
-/// server-side key means a database leak alone reveals nothing usable.
-///
-/// A fast keyed hash rather than argon2 is deliberate. Guessing is bounded by
-/// `attempts` and the five-minute expiry, not by hash cost — and putting a
-/// 64 MB argon2 verification on an unauthenticated endpoint would hand anyone a
-/// memory-exhaustion lever.
 model OtpCode {
   id        String   @id @default(cuid())
   email     String
-  /// HMAC-SHA256 of the 6 digits. Never the digits themselves.
   codeHash  String
   expiresAt DateTime
   used      Boolean  @default(false)
-  /// Failed verifications against this code. Capped, so a million-value
-  /// keyspace cannot simply be walked.
   attempts  Int      @default(0)
   createdAt DateTime @default(now())
 
-  /// What the code entitles the bearer to do: "LOGIN" opens a session on an
-  /// existing account, "REGISTER" creates one from the intent below.
-  ///
-  /// Verification matches on this, so the two can never be traded for each
-  /// other. Without it a registration code — minted for an address with no
-  /// account, by someone who only had to know the address — would verify at
-  /// /api/auth/otp/verify and open a session.
-  ///
-  /// A plain String rather than a Postgres enum: this column is internal
-  /// bookkeeping with a five-minute lifetime, and enum values in this schema
-  /// are referenced by historical rows and cannot be dropped in place.
   purpose      String  @default("LOGIN")
-  /// argon2id hash of the password chosen at registration step one, held until
-  /// the code is confirmed and the User row is written. Null for LOGIN codes.
-  /// The plaintext password is never persisted, not even for these minutes.
   passwordHash String?
 
-  /// Lookup is always "the newest live code for this email".
   @@index([email, createdAt])
-  /// Lets the sweeper delete expired rows without scanning the table.
   @@index([expiresAt])
 }
 
-/// A redeemable promotional code.
-///
-/// Codes credit the *wagerable* balance, so every one of them is real money
-/// leaving the house. Three independent limits guard that: `active` is the
-/// kill switch, `expiresAt` bounds it in time, and `maxRedemptions` bounds the
-/// total spend. `redemptionCount` is incremented under a conditional update so
-/// two players racing the last redemption cannot both win it.
 model PromoCode {
   id     String @id @default(cuid())
-  /// Stored uppercase; lookups normalise before matching, so "sun50" and
-  /// "SUN50" are the same code rather than two.
   code   String @unique
   amount Decimal @db.Decimal(18, 8)
   currency String @default("USD")
-  /// Null means unlimited — deliberately explicit rather than 0, which reads
-  /// as "nobody may redeem this".
   maxRedemptions Int?
   redemptionCount Int @default(0)
   expiresAt DateTime?
   active   Boolean  @default(true)
-  /// Free-text label for the dashboard, never shown to players.
   note      String?
   createdAt DateTime @default(now())
 
@@ -546,15 +359,10 @@ model PromoCode {
   @@index([active, expiresAt])
 }
 
-/// One player redeeming one code. The compound unique is the per-user limit:
-/// the database refuses a second row rather than the service remembering to
-/// check.
 model PromoRedemption {
   id          String   @id @default(cuid())
   promoCodeId String
   userId      String
-  /// Credited amount, copied at redemption. The code's own amount can be
-  /// edited later, and a receipt must not change after the fact.
   amount      Decimal  @db.Decimal(18, 8)
   createdAt   DateTime @default(now())
 
@@ -565,29 +373,16 @@ model PromoRedemption {
   @@index([userId, createdAt])
 }
 
-/// A giveaway players earn tickets for.
-///
-/// `prizePool` is display text ("$10,000", "iPhone 15 Pro", "VIP status")
-/// because prizes are not all money; `prizeValue` carries the number when there
-/// is one, so reporting does not have to parse marketing copy.
 model Raffle {
   id          String       @id @default(cuid())
   title       String
   prizePool   String
-  /// Null for non-cash prizes. Never derived from `prizePool` at read time.
   prizeValue  Decimal?     @db.Decimal(18, 8)
-  /// Null when tickets cannot be bought — the default. Earning them is the
-  /// mechanic; a price is an option, not the premise.
   ticketPrice Decimal?     @db.Decimal(18, 8)
   endsAt      DateTime
   status      RaffleStatus @default(ACTIVE)
-  /// Monotonic ticket allocator. Incremented inside the same transaction that
-  /// writes the tickets, so two concurrent claims can never be handed the same
-  /// number — the unique index below is the backstop if that ever fails.
   ticketCounter Int @default(0)
 
-  /// Set by the draw. Kept as a number rather than a ticket id so the winning
-  /// entry stays legible in history even if the row is ever pruned.
   winningTicketNumber Int?
   winnerUserId        String?
   drawnAt             DateTime?
@@ -600,14 +395,11 @@ model Raffle {
   @@index([status, endsAt])
 }
 
-/// One ticket. Numbers are per-raffle and start at 1.
 model RaffleTicket {
   id           String   @id @default(cuid())
   raffleId     String
   userId       String
   ticketNumber Int
-  /// How it was earned — WAGER, CHECKIN or PURCHASE. Kept so a disputed draw
-  /// can be reconstructed, and so abuse of one source is visible on its own.
   source       String
   createdAt    DateTime @default(now())
 
@@ -619,21 +411,12 @@ model RaffleTicket {
   @@index([raffleId, userId])
 }
 
-/// Per-player progress in one raffle.
-///
-/// This exists because wagering is a *lifetime* total. Without a watermark of
-/// how much of it has already been converted, a player could claim the same
-/// $10 into a new ticket on every request, forever.
 model RaffleEntry {
   id       String @id @default(cuid())
   raffleId String
   userId   String
-  /// Wagering already converted into tickets for this raffle.
   wageredCredited Decimal @default(0) @db.Decimal(18, 8)
-  /// Last UTC day a check-in ticket was granted, so it lands once per day.
   lastCheckInTicketAt DateTime?
-  /// Completed deposits already converted into tickets. Same watermark idea as
-  /// `wageredCredited`: without it, one deposit mints five tickets per request.
   depositsCredited Int @default(0)
 
   raffle Raffle @relation(fields: [raffleId], references: [id], onDelete: Cascade)

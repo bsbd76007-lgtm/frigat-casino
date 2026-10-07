@@ -1,17 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Session token storage
- *
- * One place that knows where the player's JWT lives, so the auth pages, the
- * socket hook and the dashboard shell can never disagree about the key.
- *
- * Note the trade-off: localStorage is readable by any script on the origin, so
- * an XSS can exfiltrate this token. The *admin* credential deliberately does
- * not live here — it goes into the httpOnly cookie set by /api/session, which
- * is what middleware.ts checks before serving any /admin route.
- */
-
 export const TOKEN_STORAGE_KEY = 'token';
 
 const LEGACY_TOKEN_KEY = 'frigat.token';
@@ -43,7 +31,6 @@ export function writeStoredToken(token: string | null): void {
     else window.localStorage.removeItem(TOKEN_STORAGE_KEY);
     window.localStorage.removeItem(LEGACY_TOKEN_KEY);
   } catch {
-    /* no-op */
   }
   window.dispatchEvent(new CustomEvent(LOCAL_CHANGE_EVENT));
 }
@@ -65,9 +52,4 @@ export function subscribeToToken(onChange: (token: string | null) => void): () =
   };
 }
 
-/**
- * Re-exported so the many modules that already import `API_URL` from here keep
- * working. `lib/endpoints` is the definition; this is an alias, not a second
- * opinion about where the API lives.
- */
 export { API_URL } from '@/lib/endpoints';

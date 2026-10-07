@@ -52,14 +52,11 @@ export function ThemeProvider({
         resolved = document.documentElement.dataset.theme as Theme;
       }
     } catch {
-      /* no-op */
     }
     setThemeState(resolved);
     setReady(true);
   }, [initialTheme]);
 
-  // Mirror onto <html>. The script already did this for the initial value; from
-  // here on it is this effect that keeps the document in sync.
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = theme;
@@ -72,7 +69,6 @@ export function ThemeProvider({
     try {
       window.localStorage.setItem(THEME_STORAGE_KEY, next);
     } catch {
-      /* no-op */
     }
   }, []);
 

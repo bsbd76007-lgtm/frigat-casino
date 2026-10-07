@@ -8,11 +8,6 @@ import { buildApp } from '../../index';
 import { config } from '../../config';
 import { prisma } from '../../config/prisma';
 
-/**
- * A real server on an ephemeral port and real players on real sockets, for the
- * tests that have to prove the money path end to end rather than the maths.
- */
-
 export type Frame = { type: string; data: Record<string, unknown> };
 
 export async function startServer(): Promise<{ app: FastifyInstance; port: number }> {
@@ -34,7 +29,6 @@ export async function seedPlayer(balance = '100') {
   return user.id;
 }
 
-/** A connected player: every frame is queued, and `next` waits for a match. */
 export async function connect(port: number, userId: string, gameType: string) {
   const token = jwt.sign({ userId, role: 'USER', tv: 0 }, config.jwtSecret, {
     expiresIn: '5m',
@@ -54,7 +48,6 @@ export async function connect(port: number, userId: string, gameType: string) {
   const send = (type: string, payload: Record<string, unknown> = {}) =>
     ws.send(JSON.stringify({ type, gameType, payload }));
 
-  /** Removes and returns the first queued frame matching `match`. */
   const next = async (match: (f: Frame) => boolean, ms = 3000): Promise<Frame> => {
     const deadline = Date.now() + ms;
     for (;;) {
@@ -70,10 +63,6 @@ export async function connect(port: number, userId: string, gameType: string) {
     }
   };
 
-  // The socket refuses actions until the database has confirmed the session,
-  // so poll until a harmless request is answered by anything but NOT_READY.
-  // RESUME is that request for games that support it; for the rest the answer
-  // is an ERROR that is not NOT_READY, which is just as good a signal.
   for (;;) {
     ws.send(JSON.stringify({ type: 'RESUME', gameType, payload: {} }));
     const f = await next(

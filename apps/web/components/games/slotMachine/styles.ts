@@ -1,14 +1,3 @@
-/**
- * Slot machine — injected stylesheet.
- *
- * This project ships no utility CSS framework, so the cabinet carries its own
- * rules and `useInjectedStyles` mounts them once per page.
- */
-
-// ─────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────
-
 export const STYLE_ID = 'fg-slot-machine-styles';
 
 export const CSS = `
@@ -20,7 +9,6 @@ export const CSS = `
   .slot { flex-direction: row; align-items: flex-start; justify-content: center; }
 }
 
-/* ── Cabinet ───────────────────────────────── */
 .slot__cabinet { position: relative; width: 100%; max-width: 760px; min-width: 0;
   padding: 12px; box-sizing: border-box; border-radius: var(--fg-r-lg);
   background: #141e28;
@@ -29,7 +17,6 @@ export const CSS = `
 
 .slot__marquee { display: flex; align-items: center; justify-content: space-between;
   gap: 12px; margin-bottom: 14px; padding: 0 4px; }
-/* Solid gold. */
 .slot__title { margin: 0; font-size: 15px; font-weight: 900; letter-spacing: .18em;
   text-transform: uppercase; color: var(--fg-gold); }
 .slot__meta { display: flex; gap: 8px; }
@@ -45,14 +32,12 @@ export const CSS = `
   box-shadow: inset 0 0 44px rgba(0,0,0,.85); }
 .slot__canvas { display: block; width: 100%; height: 100%; }
 
-/* Win banner rides over the reels without stealing a click from SPIN. */
 .slot__flash { position: absolute; inset: auto 0 0 0; padding: 10px;
   text-align: center; font-size: 15px; font-weight: 900; letter-spacing: .04em;
   color: var(--fg-bg); background: rgba(250,204,21,.94);
   pointer-events: none; animation: slot-flash-in .35s ease both; }
 @keyframes slot-flash-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
-/* ── Panel ─────────────────────────────────── */
 .slot__panel { display: flex; flex-direction: column; gap: 16px; width: 100%;
   max-width: 760px; min-width: 0; flex: 0 0 auto; padding: 16px; box-sizing: border-box;
   background: var(--fg-panel); border: var(--fg-edge); border-radius: var(--fg-r-lg); }
@@ -83,7 +68,6 @@ export const CSS = `
 .slot__mod:focus-visible { outline: none; box-shadow: var(--fg-ring); }
 .slot__mod:disabled { opacity: .45; cursor: not-allowed; }
 
-/* ── SPIN ──────────────────────────────────── */
 .slot__spin { position: relative; width: 100%; padding: 12px; overflow: hidden;
   font-family: inherit; font-size: 18px; font-weight: 900; letter-spacing: .12em;
   text-transform: uppercase; color: var(--fg-on-accent);
@@ -118,7 +102,6 @@ export const CSS = `
 .slot__deposit:hover { filter: brightness(1.08); }
 .slot__deposit:focus-visible { outline: none; box-shadow: var(--fg-ring); }
 
-/* ── Win list & paytable ───────────────────── */
 .slot__lines { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0;
   list-style: none; }
 .slot__line { display: flex; align-items: center; justify-content: space-between; gap: 8px;

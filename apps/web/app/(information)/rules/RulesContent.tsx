@@ -1,19 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — /rules, client half.
- *
- * Split out of page.tsx so the copy can go through `t()`. The locale lives in
- * React state on the client (LanguageProvider), so a server component cannot
- * read it — but `metadata` can only be exported from a server component. The
- * page is therefore a server shell that owns the metadata and renders this.
- * Same arrangement as admin/support -> SupportConsole.
- *
- * Section ids are load-bearing: the footer links to #terms, #fair, #age, #aml
- * and #game-rules directly, which is what let those columns stop pointing at
- * /legal/* routes that were never built. Keep them on the <section> elements.
- */
-
 import Link from 'next/link';
 
 import { useLanguage } from '@/components/providers/LanguageProvider';

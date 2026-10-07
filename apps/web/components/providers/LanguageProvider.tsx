@@ -32,13 +32,21 @@ export const DEFAULT_LOCALE: Locale = 'en';
 
 const STORAGE_KEY = 'frigat.locale';
 
-/** Nested string tree; `en.json` is the shape every other file must match. */
 type Messages = typeof en;
 
 const MESSAGES: Record<Locale, Messages> = { en, ru };
 
 function isLocale(value: unknown): value is Locale {
   return LOCALES.some((option) => option.code === value);
+}
+
+export function readStoredLocale(): Locale {
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    return isLocale(stored) ? stored : DEFAULT_LOCALE;
+  } catch {
+    return DEFAULT_LOCALE;
+  }
 }
 
 export function localeOption(code: Locale): LocaleOption {
@@ -88,12 +96,9 @@ export function LanguageProvider({
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
-      // A dropped locale (hy/ka/fa) fails isLocale and is cleared, so a
-      // returning visitor lands on the default rather than a dead value.
       if (isLocale(stored)) setLocaleState(stored);
       else if (stored) window.localStorage.removeItem(STORAGE_KEY);
     } catch {
-      /* no-op */
     }
   }, []);
 
@@ -108,7 +113,6 @@ export function LanguageProvider({
     try {
       window.localStorage.setItem(STORAGE_KEY, next);
     } catch {
-      /* no-op */
     }
   }, []);
 

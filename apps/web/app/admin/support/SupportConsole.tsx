@@ -6,19 +6,6 @@ import { useSocket } from '@/hooks/useSocket';
 import { apiJson, ApiError } from '@/lib/api';
 import { WS_URL } from '@/lib/endpoints';
 
-/**
- * FRIGAT — Support console (client half)
- *
- * Split view: the queue on the left, the selected thread on the right.
- *
- * On the socket: the admin shell deliberately does not mount
- * GameSocketProvider, because staff should not be running a player game
- * socket. This opens a narrow one for this page only — it subscribes to the
- * two support frames and nothing else — rather than pulling the whole player
- * provider tree into the admin tree. It also polls on a slow interval, so the
- * queue still refreshes if the socket is down.
- */
-
 export interface SupportMessage {
   id: string;
   ticketId: string;
@@ -37,7 +24,6 @@ export interface SupportTicket {
   messages: SupportMessage[];
 }
 
-/** Backstop for a dropped socket; the socket is the primary path. */
 const POLL_MS = 20_000;
 
 function preview(ticket: SupportTicket): string {
@@ -61,7 +47,6 @@ export function SupportConsole() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  /** Ticket ids with player messages that arrived while unselected. */
   const [unread, setUnread] = useState<Record<string, number>>({});
 
   const socket = useSocket({ url: WS_URL });
@@ -90,8 +75,6 @@ export function SupportConsole() {
     return () => clearInterval(id);
   }, [load]);
 
-  // Live messages: fold into the right thread and bump it to the top, which is
-  // how the queue is ordered server-side too.
   useEffect(
     () =>
       subscribe('SUPPORT_MESSAGE', (data) => {
@@ -100,7 +83,6 @@ export function SupportConsole() {
 
         setTickets((current) => {
           const index = current.findIndex((t) => t.id === message.ticketId);
-          // A thread we have never seen — refetch rather than invent a row.
           if (index === -1) {
             void load();
             return current;
@@ -126,7 +108,6 @@ export function SupportConsole() {
     [subscribe, load]
   );
 
-  // A brand-new ticket has no row yet.
   useEffect(() => subscribe('SUPPORT_TICKET', () => void load()), [subscribe, load]);
 
   const selected = useMemo(
@@ -159,7 +140,6 @@ export function SupportConsole() {
         method: 'POST',
         body: JSON.stringify({ ticketId: selectedId, text }),
       });
-      // The socket frame usually lands first; this is the fallback path.
       if (body?.message) {
         setTickets((current) =>
           current.map((ticket) =>

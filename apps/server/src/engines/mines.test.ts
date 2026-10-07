@@ -79,11 +79,6 @@ describe('mines — multipliers', () => {
     expect(multiplierAfter(10, 3)).toBeGreaterThan(multiplierAfter(5, 3));
   });
 
-  /**
-   * The house edge has to appear in the price, not just in the comment: a fair
-   * single-tile multiplier is 25/20 for five mines, and the engine must return
-   * that shaved by the configured edge.
-   */
   it('prices the first safe tile at the fair odds less the house edge', () => {
     const fair = T / (T - 5);
     const expected = Math.floor(fair * (1 - HOUSE_EDGE.MINES) * 100) / 100;

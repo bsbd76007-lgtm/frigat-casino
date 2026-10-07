@@ -1,30 +1,14 @@
-/**
- * A grid of tiles lying on the board floor.
- *
- * Mines and Keno are the same object with different labels on it, so the
- * geometry and — more importantly — the hit test live here once. Getting a
- * click back to a tile is the part a pseudo-3D board gets wrong: the tiles are
- * projected quads, not CSS boxes, so a rectangle test against the grid's
- * bounding box picks the wrong tile everywhere except the focus row.
- *
- * Rows are indexed far to near and columns left to right, so tile 0 is the far
- * left one — the same order the server's tile indices are in.
- */
-
 import type { Scene, ScreenPoint } from './scene';
 import type { Box } from './solids';
 
 export interface TileGridSpec {
   columns: number;
   rows: number;
-  /** The floor rectangle the grid is laid out inside, in world space. */
   x0: number;
   x1: number;
   y0: number;
   y1: number;
-  /** Gap between tiles, as a fraction of a cell. */
   gap?: number;
-  /** Tile thickness, in world pixels. */
   thickness?: number;
 }
 
@@ -32,15 +16,10 @@ export interface TileGrid {
   count: number;
   columns: number;
   rows: number;
-  /** The solid for a tile, optionally lifted off the floor and re-thickened. */
   boxOf(index: number, options?: { lift?: number; thickness?: number }): Box;
-  /** World centre of a tile's top face. */
   centreOf(index: number): { x: number; y: number };
-  /** The tile under a canvas point, or null. Nearer tiles win. */
   indexAt(point: ScreenPoint): number | null;
-  /** Row of a tile, 0 at the far edge — reveal order, stagger, depth sorting. */
   rowOf(index: number): number;
-  /** Tiles far to near, the order they must be drawn in. */
   drawOrder(): number[];
 }
 
@@ -72,7 +51,6 @@ export function makeTileGrid(scene: Scene, spec: TileGridSpec): TileGrid {
   };
 
   const indexAt = (point: ScreenPoint): number | null => {
-    // Near rows first: a raised tile in front can cover the one behind it.
     for (let row = rows - 1; row >= 0; row -= 1) {
       for (let col = 0; col < columns; col += 1) {
         const index = row * columns + col;
@@ -103,7 +81,6 @@ export function makeTileGrid(scene: Scene, spec: TileGridSpec): TileGrid {
   };
 }
 
-/** Winding test against a convex quad — every projected tile top is convex. */
 function insideQuad(p: ScreenPoint, quad: readonly ScreenPoint[]): boolean {
   let sign = 0;
   for (let i = 0; i < quad.length; i += 1) {

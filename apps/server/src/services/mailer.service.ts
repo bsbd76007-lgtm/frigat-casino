@@ -1,32 +1,24 @@
-/**
- * FRIGAT — Outbound email
- *
- * One transport, decided once at boot from the SMTP_* environment. With no host
- * configured the transport becomes a logger: local development gets the code on
- * stdout instead of a delivery failure, which is the difference between a
- * feature you can try and one you cannot.
- *
- * The fallback is deliberately loud and deliberately refuses to run in
- * production. A login code printed to the server log is a credential in a place
- * credentials should never be — fine on a laptop, unacceptable anywhere real —
- * so `NODE_ENV=production` without SMTP is a startup-visible error rather than
- * a silent downgrade to "nobody can log in".
- */
-
 import nodemailer, { type Transporter } from 'nodemailer';
 
 import { config } from '../config';
+
+export interface MailAttachment {
+  filename: string;
+  content: Buffer;
+  cid?: string;
+  contentType?: string;
+}
 
 export interface Mail {
   to: string;
   subject: string;
   text: string;
   html?: string;
+  attachments?: MailAttachment[];
 }
 
 export interface MailerResult {
   delivered: boolean;
-  /** Set only by the development fallback, for tests and local sign-in. */
   preview?: string;
 }
 
@@ -51,7 +43,6 @@ function getTransport(): Transporter | null {
   transport = nodemailer.createTransport({
     host: config.smtp.host,
     port: config.smtp.port,
-    // Implicit TLS on 465; STARTTLS is negotiated on everything else.
     secure: config.smtp.port === 465,
     ...(config.smtp.user
       ? { auth: { user: config.smtp.user, pass: config.smtp.pass } }
@@ -74,7 +65,6 @@ export async function sendMail(mail: Mail, log: Logger): Promise<MailerResult> {
   if (!smtp) {
     if (config.env === 'production') throw new MailerNotConfiguredError();
 
-    // Development fallback. The body is logged in full, including the code.
     log.warn(
       { to: mail.to, subject: mail.subject, body: mail.text },
       'SMTP not configured — email logged instead of sent (development only)'
@@ -88,13 +78,13 @@ export async function sendMail(mail: Mail, log: Logger): Promise<MailerResult> {
     subject: mail.subject,
     text: mail.text,
     ...(mail.html ? { html: mail.html } : {}),
+    ...(mail.attachments?.length ? { attachments: mail.attachments } : {}),
   });
 
   log.info({ to: mail.to, subject: mail.subject }, 'email sent');
   return { delivered: true };
 }
 
-/** True when a real transport exists — surfaced so routes can describe reality. */
 export function isMailerLive(): boolean {
   return getTransport() !== null;
 }

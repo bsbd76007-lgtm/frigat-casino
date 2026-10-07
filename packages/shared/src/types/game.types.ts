@@ -33,7 +33,6 @@ export interface User {
 export interface Wallet {
   id: string;
   userId: string;
-  /** Serialized Decimal — always transmit as string to avoid float drift. */
   balance: string;
   affiliateBalance: string;
   currency: string;
@@ -44,7 +43,6 @@ export interface Transaction {
   id: string;
   walletId: string;
   type: TransactionType;
-  /** Serialized Decimal as string. */
   amount: string;
   status: TransactionStatus;
   txHash?: string | null;
@@ -53,7 +51,6 @@ export interface Transaction {
 
 export interface BetRequest {
   gameType: GameType;
-  /** Bet amount as decimal string, validated & parsed server-side. */
   amount: string;
   currency: string;
   clientSeed: string;
@@ -71,7 +68,6 @@ export interface BetResult {
   hashedServerSeed: string;
   clientSeed: string;
   nonce: number;
-  /** New wallet balance after settlement (authoritative, from ledger). */
   balance: string;
   createdAt: Date | string;
 }

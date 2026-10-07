@@ -26,7 +26,6 @@ export function CrashIcon({ size = 40, title, ...rest }: GameIconProps) {
         </filter>
       </defs>
 
-      {/* Axes — just enough of a chart to read as one. */}
       <path
         d="M7 6v35h34"
         fill="none"
@@ -35,7 +34,6 @@ export function CrashIcon({ size = 40, title, ...rest }: GameIconProps) {
         strokeLinecap="round"
       />
 
-      {/* Area under the curve, then the curve itself. */}
       <path
         d="M9 39c7-1 12-5 15-11S29 15 35 10v29z"
         fill="#e0b055"
@@ -50,7 +48,6 @@ export function CrashIcon({ size = 40, title, ...rest }: GameIconProps) {
         filter={`url(#${glow})`}
       />
 
-      {/* Rocket at the head of the curve, nose along the tangent. */}
       <g transform="rotate(38 35 10)" filter={`url(#${glow})`}>
         <path
           d="M35 2.5c2.6 2.4 4 5.6 4 9.2 0 1.6-.3 3.2-.9 4.7h-6.2c-.6-1.5-.9-3.1-.9-4.7 0-3.6 1.4-6.8 4-9.2z"

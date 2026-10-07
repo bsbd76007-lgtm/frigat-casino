@@ -10,17 +10,9 @@ import { prisma } from '../config/prisma';
 import { resetRateLimits } from '../services/rateLimit.service';
 import { base32Decode, currentStep, hotp } from '../services/totp.service';
 
-/**
- * Account security end to end over HTTP: authenticator setup and sign-in, the
- * trial Telegram link, and account deletion. Each test makes its own user.
- */
-
 let app: FastifyInstance;
 
 beforeAll(async () => {
-  // The developer .env carries a real Turnstile secret; these tests are not a
-  // browser and cannot solve one. `disabled` is the one explicit bypass
-  // utils/turnstile.ts honours.
   (config.turnstile as { disabled: boolean }).disabled = true;
   app = await buildApp({ logger: false });
   await app.ready();
@@ -54,7 +46,6 @@ async function makeUser(opts: { role?: Role; balance?: string } = {}) {
 }
 
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
-/** A code one step ahead: valid now, and never the step a previous call spent. */
 const codeFor = (secret: string, ahead = 1) => hotp(base32Decode(secret), currentStep() + ahead);
 
 async function enable2fa(token: string) {
@@ -90,14 +81,11 @@ describe('authenticator two-factor', () => {
     expect(backupCodes).toHaveLength(8);
     const row = await prisma.user.findUniqueOrThrow({ where: { id: u2.id } });
     expect(row.totpEnabled).toBe(true);
-    // Sealed at rest: neither the secret nor a backup code is stored readable.
     expect(row.totpSecret).not.toMatch(/^[A-Z2-7]{32}$/);
     expect(row.totpBackupCodes).not.toContain(backupCodes[0]);
   });
 
   it('signs in only after the code, and the challenge is useless as a session', async () => {
-    // An admin skips the email code, so the password goes straight to the
-    // authenticator step — the shortest path through the new branch.
     const u = await makeUser({ role: Role.ADMIN });
     const { secret } = await enable2fa(u.token);
 
@@ -133,7 +121,6 @@ describe('authenticator two-factor', () => {
     expect(me.statusCode).toBe(200);
     expect((me.json() as { totpEnabled: boolean }).totpEnabled).toBe(true);
 
-    // The same code cannot be spent twice.
     const replay = await app.inject({
       method: 'POST',
       url: '/api/auth/2fa/verify',

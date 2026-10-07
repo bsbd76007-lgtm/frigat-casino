@@ -14,7 +14,6 @@ type CoinSide = 'HEADS' | 'TAILS';
 
 interface Flip extends CoinFlight {
   payout: string | null;
-  /** The side that was picked when the bet went out, not the current control. */
   pick: CoinSide;
 }
 
@@ -29,11 +28,8 @@ export default function CoinflipPage() {
   const [flip, setFlip] = useState<Flip | null>(null);
   const [complete, setComplete] = useState(false);
 
-  /** Ids the board can compare: two heads in a row still have to be two flips. */
   const roundSeq = useRef(0);
 
-  // autoSettle is off: the coin is still in the air when the server answers, and
-  // a second bet must not land on top of a flip that is still playing out.
   const { busy, bet, settle } = useGameRound<{ landed?: CoinSide }>('COINFLIP', {
     autoSettle: false,
     onResult: ({ result, win, payout: paid }) => {
@@ -41,8 +37,6 @@ export default function CoinflipPage() {
       setComplete(false);
       setFlip({
         id: `coin-${roundSeq.current}`,
-        // Two outcomes, so the face is recoverable from the result even if the
-        // frame omits it: a win landed on the pick, a loss on the other side.
         landed: result?.landed ?? (win ? side : other(side)),
         win,
         payout: paid,

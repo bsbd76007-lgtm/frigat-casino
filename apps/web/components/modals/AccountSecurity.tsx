@@ -1,15 +1,5 @@
 'use client';
 
-/**
- * The account panel's security sections: authenticator two-factor, the trial
- * Telegram link, and deleting the account.
- *
- * Everything here is a request to the server and a render of what it answers —
- * enabling 2FA, linking Telegram and deleting the account are all decided and
- * enforced in apps/server/src/routes/account.routes.ts. Nothing is trusted to
- * this component: hiding a button is presentation, the route is the rule.
- */
-
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
 import { apiFetch } from '@/lib/api';
@@ -23,7 +13,6 @@ interface SecurityState {
   telegram: { username: string; linkedAt: string } | null;
 }
 
-/** Server error codes → locale keys. Anything unmapped falls back to a generic line. */
 const ERROR_KEYS: Record<string, string> = {
   invalid_totp: 'security.totpInvalid',
   totp_not_set_up: 'security.totpRestart',
@@ -132,7 +121,6 @@ export function AccountSecurity() {
     void load();
   }, [load]);
 
-  // ── Two-factor ──
   const [setup, setSetup] = useState<{ secret: string; otpauthUri: string } | null>(null);
   const [totpCode, setTotpCode] = useState('');
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
@@ -186,7 +174,6 @@ export function AccountSecurity() {
     }
   };
 
-  // ── Telegram ──
   const [tgName, setTgName] = useState('');
   const [tgBusy, setTgBusy] = useState(false);
   const [tgError, setTgError] = useState<string | null>(null);
@@ -224,7 +211,6 @@ export function AccountSecurity() {
 
   return (
     <div className="acsec">
-      {/* ── Two-factor ── */}
       <div className="acsec__card">
         <div className="acsec__head">
           <h4 className="acsec__title">{t('security.totpTitle')}</h4>
@@ -319,7 +305,6 @@ export function AccountSecurity() {
         </div>
       </div>
 
-      {/* ── Telegram (trial) ── */}
       <div className="acsec__card">
         <div className="acsec__head">
           <h4 className="acsec__title">{t('security.tgTitle')}</h4>
@@ -357,19 +342,11 @@ export function AccountSecurity() {
   );
 }
 
-/**
- * "Delete account" — a plain text link at the very end of the account panel.
- * It opens the confirmation in place: password, an authenticator code when
- * 2FA is on, and an "I understand" tick. The server decides and enforces
- * everything (see POST /api/account/delete).
- */
 export function AccountDelete() {
   useInjectedStyles(STYLE_ID, CSS);
   const { t } = useLanguage();
   const { setToken } = useGameSocket();
 
-  // closed → "are you sure?" → password form. Two deliberate clicks before
-  // anything that can delete is even on screen.
   const [step, setStep] = useState<'closed' | 'ask' | 'form'>('closed');
   const [totpEnabled, setTotpEnabled] = useState(false);
   const [password, setPassword] = useState('');
@@ -380,7 +357,6 @@ export function AccountDelete() {
   const message = (err: unknown) =>
     t(err instanceof SecurityError && ERROR_KEYS[err.code] ? ERROR_KEYS[err.code] : 'security.error');
 
-  // Whether the form needs a code is only worth asking once it is opened.
   useEffect(() => {
     if (step !== 'form') return;
     void call<SecurityState>('api/account/security')
@@ -401,7 +377,6 @@ export function AccountDelete() {
     setError(null);
     try {
       await post('api/account/delete', { password, code: code || undefined });
-      // Every session is already dead server-side; drop ours and leave.
       setToken(null);
       await fetch('/api/session', { method: 'DELETE' }).catch(() => {});
       window.location.replace('/');

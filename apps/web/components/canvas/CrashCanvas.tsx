@@ -25,13 +25,6 @@ import {
 
 export const CRASH_GROWTH_RATE_PER_SEC = CRASH.growthRatePerSec;
 
-/**
- * Crash is single-player: a round runs only while this player has a stake in
- * it. 'BETTING' is retained for the shared-round shape but is no longer
- * reached — there is no betting window to wait through. 'CASHED_OUT' is the
- * round ending because the player took the money, which must not draw the
- * bust explosion.
- */
 export type CrashPhase =
   | 'IDLE'
   | 'BETTING'
@@ -56,18 +49,12 @@ interface Particle {
   hue: number;
 }
 
-/**
- * The board's violet while the round is live — the state the player is still
- * acting on — gold once it pays, red when it busts. Gold is reward, so it is
- * not allowed to mean "rising".
- */
 const THEME = TABLES.crash;
 const LIVE = THEME.hue;
 const CASHED = GOLD;
 const BUST = NEG;
 
 const EXPLOSION_MS = 1100;
-/** The depth the flight plane stands at, and the floor band around it. */
 const FLIGHT_Y = 0.52;
 const FLOOR_NEAR = 0.98;
 const FLOOR_FAR = 0.06;
@@ -81,10 +68,6 @@ export function multiplierAtSeconds(seconds: number): number {
   return Math.exp(CRASH_GROWTH_RATE_PER_SEC * Math.max(0, seconds));
 }
 
-/**
- * Particles are generated once per bust and stored, never re-rolled per frame —
- * re-randomising each frame would make the explosion strobe.
- */
 function makeParticles(count: number): Particle[] {
   return Array.from({ length: count }, (_, i) => {
     const angle = i * 2.39996 + (i % 3) * 0.35;
@@ -110,6 +93,15 @@ export function CrashCanvas({
 
   const particlesRef = useRef<Particle[]>([]);
   const crashedAtRef = useRef<number | null>(null);
+  const cashedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (phase === 'CASHED_OUT') {
+      if (cashedAtRef.current === null) cashedAtRef.current = performance.now();
+    } else if (phase !== 'CRASHED') {
+      cashedAtRef.current = null;
+    }
+  }, [phase]);
 
   useEffect(() => {
     if (phase === 'CRASHED') {
@@ -126,9 +118,7 @@ export function CrashCanvas({
   const displayMultiplier =
     phase === 'CRASHED' && crashPoint != null
       ? crashPoint
-      : phase === 'CASHED_OUT' && cashedOutAt != null
-        ? cashedOutAt
-        : multiplier;
+      : multiplier;
 
   const draw = useMemo(
     () =>
@@ -144,7 +134,6 @@ export function CrashCanvas({
         const padLeft = 50;
         const padRight = 18;
         const plotW = Math.max(1, width - padLeft - padRight);
-        /** How much of the stage the climb is allowed to use. */
         const zSpan = h * 0.58;
 
         const live = Math.max(1, displayMultiplier || 1);
@@ -157,8 +146,9 @@ export function CrashCanvas({
 
         const busted = phase === 'CRASHED';
         const cashed = phase === 'CASHED_OUT';
-        const ended = busted || cashed;
-        const curveColour = busted ? BUST : cashed ? CASHED : LIVE;
+        const flyingOn = cashed && crashPoint != null && live < crashPoint;
+        const ended = busted || (cashed && !flyingOn);
+        const curveColour = busted ? BUST : cashed && !flyingOn ? CASHED : LIVE;
 
         drawBackdrop(ctx, scene, {
           x0: padLeft - plotW * 0.08,
@@ -172,8 +162,6 @@ export function CrashCanvas({
           theme: THEME,
         });
 
-        // Multiplier rungs: horizontal lines standing in the flight plane, the
-        // 3D stand-in for the old flat y-axis.
         ctx.font = `600 11px ${FONT.num}`;
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
@@ -193,7 +181,6 @@ export function CrashCanvas({
           ctx.fillText(`${m.toFixed(2)}×`, a.x - 8, a.y);
         }
 
-        // Time ticks, lying on the floor where the flight plane meets it.
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.font = `600 10px ${FONT.num}`;
@@ -204,8 +191,7 @@ export function CrashCanvas({
           ctx.fillText(`${seconds.toFixed(0)}s`, at.x, at.y - 14);
         }
 
-        const showCurve = phase === 'RUNNING' || ended;
-        let head = { x: scene.vanishX, y: h / 2 };
+        const showCurve = phase === 'RUNNING' || ended || flyingOn;
 
         if (showCurve) {
           const samples = 120;
@@ -217,13 +203,10 @@ export function CrashCanvas({
             top.push(scene.project(x, FLIGHT_Y, zOf(multiplierAtSeconds(seconds))));
             base.push(scene.project(x, FLIGHT_Y, 0));
           }
-          head = top[top.length - 1];
+          const head = top[top.length - 1];
 
-          // The climb as a wall standing on the floor: the same area fill the
-          // flat chart had, except it now has a footing you can see.
           poly(ctx, [...top, ...base.slice().reverse()], alpha(curveColour, 0.16));
 
-          // The curve itself, along the top of the wall.
           ctx.beginPath();
           for (let i = 0; i < top.length; i += 1) {
             if (i === 0) ctx.moveTo(top[i].x, top[i].y);
@@ -260,7 +243,6 @@ export function CrashCanvas({
           if (!ended) {
             drawRocket(ctx, top, reducedMotion ? 1 : 0.75 + Math.sin(time / 70) * 0.25);
           } else if (cashed) {
-            // A held marker where the player got out — no explosion.
             ctx.beginPath();
             ctx.arc(head.x, head.y, 6, 0, Math.PI * 2);
             ctx.fillStyle = CASHED;
@@ -273,9 +255,6 @@ export function CrashCanvas({
           }
         }
 
-        // The readout is head-up display, not part of the board, so it stays in
-        // screen space — a number sheared into the flight plane would be the one
-        // thing on the stage the player cannot read at a glance.
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         const cx = padLeft + plotW / 2;
@@ -293,7 +272,6 @@ export function CrashCanvas({
           ctx.font = `600 12px ${FONT.body}`;
           ctx.fillText('Place your bet', cx, cy + 38);
         } else if (phase === 'IDLE') {
-          // Nothing is running and nothing will until this player bets.
           ctx.fillStyle = BOARD.muted;
           ctx.font = `600 14px ${FONT.body}`;
           ctx.fillText('Place a bet to start a round', cx, cy);
@@ -306,8 +284,7 @@ export function CrashCanvas({
 
           ctx.save();
           ctx.translate(shake, 0);
-          ctx.fillStyle = busted ? BUST : cashed ? CASHED : BOARD.text;
-          // Tabular figures: the climb through 9.99 → 10.00 must not shift.
+          ctx.fillStyle = busted ? BUST : cashed && !flyingOn ? CASHED : BOARD.text;
           ctx.font = `700 58px ${FONT.num}`;
           ctx.shadowColor = curveColour;
           ctx.shadowBlur = 18;
@@ -315,15 +292,30 @@ export function CrashCanvas({
           ctx.shadowBlur = 0;
 
           if (busted || cashed) {
+            const left = cashedOutAt != null ? ` · YOU LEFT AT ${cashedOutAt.toFixed(2)}×` : '';
             ctx.fillStyle = busted ? BUST : CASHED;
             ctx.font = `800 14px ${FONT.body}`;
-            ctx.fillText(busted ? 'CRASHED' : 'CASHED OUT', cx, cy + 44);
+            ctx.fillText(
+              busted
+                ? cashedOutAt != null
+                  ? `FLEW TO ${live.toFixed(2)}×${left}`
+                  : 'CRASHED'
+                : flyingOn
+                  ? `STILL FLYING${left}`
+                  : 'CASHED OUT',
+              cx,
+              cy + 44
+            );
           }
           ctx.restore();
+
+          if ((cashed || busted) && cashedOutAt != null) {
+            drawCashoutGain(ctx, cx, cy + 82, cashedOutAt, cashedAtRef.current, reducedMotion);
+          }
         }
 
       },
-    [phase, displayMultiplier, bettingMsRemaining, cashedOutAt, reducedMotion]
+    [phase, displayMultiplier, crashPoint, bettingMsRemaining, cashedOutAt, reducedMotion]
   );
 
   const canvasRef = useCanvasRenderer(draw);
@@ -332,7 +324,7 @@ export function CrashCanvas({
     phase === 'CRASHED'
       ? `Crash round busted at ${(crashPoint ?? multiplier).toFixed(2)}x`
       : phase === 'CASHED_OUT'
-        ? `Cashed out at ${(cashedOutAt ?? multiplier).toFixed(2)}x`
+        ? `Cashed out at ${(cashedOutAt ?? multiplier).toFixed(2)}x, rocket at ${multiplier.toFixed(2)}x`
         : phase === 'RUNNING'
           ? `Crash multiplier ${multiplier.toFixed(2)}x and rising`
           : phase === 'BETTING'
@@ -350,11 +342,47 @@ export function CrashCanvas({
   );
 }
 
-/**
- * The craft at the head of the curve, banked along it. Drawn in screen space:
- * it is a few pixels across, so projecting a hull would cost a lot of maths to
- * land inside the same pixels this does.
- */
+const GAIN_COUNT_MS = 900;
+const GAIN_POP_MS = 260;
+
+function drawCashoutGain(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  multiplier: number,
+  startedAt: number | null,
+  reducedMotion: boolean
+) {
+  const gain = Math.max(0, (multiplier - 1) * 100);
+  const since = startedAt == null || reducedMotion ? Infinity : performance.now() - startedAt;
+  const count = Math.min(1, since / GAIN_COUNT_MS);
+  const eased = 1 - (1 - count) ** 3;
+  const pop = Math.min(1, since / GAIN_POP_MS);
+  const scale = pop < 1 ? 0.6 + 0.55 * Math.sin((pop * Math.PI) / 2) : 1 + 0.15 * Math.max(0, 1 - (since - GAIN_POP_MS) / 200);
+  const rise = (1 - Math.min(1, since / GAIN_POP_MS)) * 14;
+
+  const text = `+${(gain * eased).toFixed(gain >= 1000 ? 0 : 2)}%`;
+  ctx.save();
+  ctx.translate(cx, cy + rise);
+  ctx.scale(scale, scale);
+  ctx.globalAlpha = Math.min(1, since / 120);
+  ctx.font = `800 22px ${FONT.num}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const w = Math.max(96, ctx.measureText(`+${gain.toFixed(2)}%`).width + 32);
+  const h = 38;
+  ctx.fillStyle = 'rgba(224, 176, 85, .14)';
+  ctx.strokeStyle = CASHED;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(-w / 2, -h / 2, w, h, h / 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = CASHED;
+  ctx.fillText(text, 0, 1);
+  ctx.restore();
+}
+
 function drawRocket(
   ctx: CanvasRenderingContext2D,
   top: ReadonlyArray<{ x: number; y: number }>,

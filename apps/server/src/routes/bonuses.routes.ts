@@ -1,10 +1,3 @@
-/**
- * GET /api/bonuses/me — the deposit-bonus ladder for the signed-in player:
- * which steps are used, what the next deposit earns, and how much is left to
- * wager before a withdrawal unlocks. The bonus itself is credited by the
- * deposit webhook (payment.service); nothing here pays anything out.
- */
-
 import type { FastifyInstance } from 'fastify';
 
 import { identityFromRequest } from '../middleware/auth';

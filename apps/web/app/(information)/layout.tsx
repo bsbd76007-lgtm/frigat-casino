@@ -1,27 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Information pages shell
- *
- * `(information)` is a route group, so it is stripped from the URL: this layout
- * serves /rules, /promotions and /partner-program.
- *
- * Deliberately *not* inside `(dashboard)`. That group gates its content on a
- * token read from localStorage, and these pages have to be readable signed out
- * — house rules and an age restriction that only appear once you already have
- * an account are worth nothing. The providers these pages need (theme,
- * language) live in the root layout, and the root layout also renders the
- * footer, so the sitemap is unchanged here.
- *
- * ── On the header ──────────────────────────────────────────────────────────
- * This is a slim public bar, not the dashboard `Navbar`. That component reads
- * `useGameSocket`, whose provider is mounted in the dashboard layout, so
- * rendering it here throws — and throws during prerender, which fails the build
- * rather than one request. It also carries a cashier and a balance, neither of
- * which means anything to a signed-out reader. The bar below is built from the
- * same tokens, so it matches without depending on a live socket.
- */
-
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -42,8 +20,6 @@ const NAV = [
 const STYLE_ID = 'fg-information-styles';
 
 const CSS = `
-/* Public header, mirroring .dash__header's treatment so the two chromes read as
-   one site. */
 .infobar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center;
   gap: 16px; flex-wrap: wrap; padding: 10px 12px;
   background: var(--fg-header);
@@ -70,8 +46,6 @@ const CSS = `
 .info__lede { margin: 0 0 24px; max-width: 70ch; font-size: 14.5px; line-height: 1.65;
   color: var(--fg-muted); }
 
-/* Anchored sections: the footer links straight to these ids, so they need a
-   scroll offset clear of the sticky header. */
 .info__section { scroll-margin-top: 76px; margin-bottom: 16px; padding: 12px;
   background: var(--fg-panel); border: 1px solid transparent; border-radius: var(--fg-r-lg); }
 .info__section h2 { margin: 0 0 10px; font-size: 17px; font-weight: 800;
@@ -90,7 +64,6 @@ const CSS = `
 .info__list li:last-child { margin-bottom: 0; }
 .info__list b { color: var(--fg-text); font-weight: 700; }
 
-/* Callout for anything a reader must not skim past. */
 .info__note { display: flex; gap: 10px; margin: 0 0 16px; padding: 8px 10px;
   font-size: 13px; line-height: 1.6; color: var(--fg-muted);
   background: rgba(224, 176, 85, .08); border: 1px solid rgba(224, 176, 85, .3);

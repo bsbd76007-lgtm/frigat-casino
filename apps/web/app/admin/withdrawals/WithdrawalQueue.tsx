@@ -12,7 +12,9 @@ export interface WithdrawalRow {
   status: string;
   createdAt: string;
   currency: string;
-  /** Payout destination. Null only for rows written before the join existed. */
+  payoutAmount?: string | null;
+  exchangeRateUsdt?: string | null;
+  exchangeRateSource?: 'BINANCE' | 'USDT_PEG' | null;
   address?: string | null;
   network?: string | null;
   userId: string;
@@ -96,7 +98,7 @@ export function WithdrawalQueue({
         <table className="tbl">
           <thead>
             <tr>
-              <th>Requested</th><th>Player</th><th className="tbl__num">Amount</th>
+              <th>Requested</th><th>Player</th><th className="tbl__num">Reserved (USD)</th>
               <th className="tbl__num">Wallet after</th><th>Status</th><th>Flags</th>
               <th>Actions</th>
             </tr>
@@ -113,16 +115,18 @@ export function WithdrawalQueue({
                     <div className="tbl__mono">{row.userId}</div>
                   </td>
                   <td className="tbl__num">
-                    {formatDecimalString(row.amount, 2)} {row.currency}
+                    {formatDecimalString(row.amount, 2)} USD
                     <span className="adm-wd__dest" title={row.address ?? undefined}>
+                      {row.payoutAmount
+                        ? `Payout: ${row.payoutAmount} ${row.currency} at ${row.exchangeRateUsdt} USDT/${row.currency}`
+                        : `Payout requested in ${row.currency}; no quote saved`}
                       {row.address
-                        ? `→ ${row.address}${row.network ? ` (${row.network})` : ''}`
-                        : '→ destination unavailable'}
+                        ? ` → ${row.address}${row.network ? ` (${row.network})` : ''}`
+                        : ' → destination unavailable'}
                     </span>
                   </td>
                   <td className="tbl__num">{formatDecimalString(row.walletBalance, 2)}</td>
                   <td>
-                    {/* PENDING → yellow, COMPLETED → green, FAILED → red. */}
                     <span className={`tag tag--${row.status.toLowerCase()}`}>
                       {row.status}
                     </span>

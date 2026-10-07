@@ -34,22 +34,16 @@ export type MineTileState = 'idle' | 'safe' | 'mine' | 'hit';
 export interface MinesCanvasProps {
   gridSize: number;
   columns?: number;
-  /** Tiles the server has confirmed safe. */
   revealed: number[];
-  /** Every mine, sent only once the round is over. */
   minePositions: number[];
-  /** The mine that ended the round. */
   hitTile: number | null;
-  /** Whether a click should try to reveal. False between rounds and while busy. */
   interactive: boolean;
   onReveal(tile: number): void;
-  /** Translated board name for assistive tech; the status is appended to it. */
   ariaLabel?: string;
   height?: number;
   className?: string;
 }
 
-/** An unrevealed tile stands proud of the floor; revealing presses it in. */
 const THICKNESS = { idle: 17, hover: 21, revealed: 7, hit: 13 } as const;
 const PRESS_MS = 260;
 const FLASH_MS = 900;
@@ -71,7 +65,6 @@ export function MinesCanvas({
 
   const [hovered, setHovered] = useState<number | null>(null);
   const gridRef = useRef<ReturnType<typeof makeTileGrid> | null>(null);
-  /** When each tile turned — drives the press-in, so it must survive a redraw. */
   const turnedAtRef = useRef(new Map<number, number>());
 
   const revealedSet = useMemo(() => new Set(revealed), [revealed]);
@@ -87,9 +80,6 @@ export function MinesCanvas({
     [hitTile, mineSet, revealedSet]
   );
 
-  // A tile's turn time is recorded once, the frame its state first stops being
-  // idle. Reading it during the draw instead would restart the animation on
-  // every frame.
   useEffect(() => {
     const turned = turnedAtRef.current;
     const now = performance.now();
@@ -125,7 +115,6 @@ export function MinesCanvas({
 
         const now = performance.now();
 
-        // Far to near: a nearer tile has to paint over the one behind it.
         for (const tile of grid.drawOrder()) {
           if (tile >= gridSize) continue;
           const state = stateOf(tile);
@@ -143,13 +132,9 @@ export function MinesCanvas({
           const thickness = state === 'idle' ? from : from + (to - from) * eased;
 
           const box = grid.boxOf(tile, { thickness });
-          // Idle tiles stand proud of the surface; a turned tile settles
-          // almost flush — pressed, in neumorphic terms.
           const lift = state === 'idle' ? (isHovered ? 1.3 : 1) : 0.35;
           drawBox(ctx, scene, box, tileFaces(state, isHovered), lift);
 
-          // A hairline inset on the top face reads as a bevel and stops a run
-          // of same-coloured tiles reading as one slab.
           const rim = state === 'idle' ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.08)';
           drawTopRim(ctx, scene, box, rim);
 
@@ -236,7 +221,6 @@ function tileFaces(state: MineTileState, hovered: boolean) {
   }
 }
 
-/** A hairline along the edge of the top face. */
 function drawTopRim(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
@@ -260,11 +244,6 @@ function drawTopRim(
   ctx.stroke();
 }
 
-/**
- * A four-sided pyramid standing on a tile — the safe-tile gem. Built from the
- * scene rather than drawn as a glyph so it catches the same light as the tile
- * under it and grows out of it as the tile presses in.
- */
 function drawGem(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
@@ -285,14 +264,12 @@ function drawGem(
     scene.project(cx + half, cy, box.z1),
     scene.project(cx, cy + halfDepth, box.z1),
   ];
-  // Left-facing flanks are the lit ones, matching every box on the board.
   const tone = [0.0, -0.18, -0.34, 0.16];
   for (let i = 0; i < rim.length; i += 1) {
     poly(ctx, [rim[i], rim[(i + 1) % rim.length], apex], shade(base, tone[i]));
   }
 }
 
-/** A dark bead with a glint — the mine. Bright while it is the one that hit. */
 function drawMine(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
@@ -319,7 +296,6 @@ function drawMine(
   ctx.fillStyle = base;
   ctx.fill();
 
-  // Spikes, so a mine is still a mine without colour.
   ctx.strokeStyle = hit ? shade(GOLD, -0.2) : shade(THEME.idle, 0.25);
   ctx.lineWidth = 1.5;
   for (let i = 0; i < 6; i += 1) {

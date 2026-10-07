@@ -1,18 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Logs & security
- *
- * Live operational state: socket connections, platform availability, frozen
- * accounts, and the most recent privileged actions.
- *
- * Scope note: this shows what the system actually records. IP watchlists and
- * API key management are deliberately absent rather than mocked — neither has
- * a backing model (no request-IP capture, no API key table), and a panel that
- * displays invented security data is worse than one that admits the gap,
- * because an operator may act on it.
- */
-
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 
@@ -58,8 +45,6 @@ export default function SecurityPage() {
 
   const load = useCallback(async () => {
     setError(null);
-    // Settled rather than all: one failing panel should not blank the others,
-    // and on a security screen a partial view beats an empty one.
     const [m, r, f, a] = await Promise.allSettled([
       apiJson<Metrics>(`${API_URL}/api/admin/metrics`),
       apiJson<RiskConfig>(`${API_URL}/api/admin/risk`),

@@ -1,27 +1,15 @@
-/**
- * The chrome every board shares: the ground it sits on and the light above it.
- *
- * Drawn first, so a board's own solids land on a consistent stage. Keeping this
- * out of the individual boards is what makes five different games read as one
- * table rather than five screens that each guessed at a background.
- */
-
 import type { Scene } from './scene';
 import { BOARD, ACCENT, type TableTheme } from './palette';
 import { drawFloorQuad } from './solids';
 
 export interface BackdropOptions {
-  /** World x the floor spans. Defaults to the full stage, generously overhung. */
   x0?: number;
   x1?: number;
   y0?: number;
   y1?: number;
-  /** Tint the glow under the board — a win or a bust colours the whole table. */
   glow?: string;
   glowStrength?: number;
-  /** The board's signature surface, idle and line colours. */
   theme?: TableTheme;
-  /** Grid lines across the floor; 0 draws none. */
   gridRows?: number;
   gridCols?: number;
 }
@@ -43,16 +31,12 @@ export function drawBackdrop(
     theme,
   } = options;
 
-  // The page behind the board and the floor are one surface — the boards are
-  // neumorphic, so a solid stands out by its shadows, not by the floor being
-  // a different colour.
   const surface = theme?.surface ?? BOARD.bg;
   ctx.fillStyle = surface;
   ctx.fillRect(0, 0, scene.width, scene.height);
   drawFloorQuad(ctx, scene, x0, x1, y0, y1, surface);
 
   if (glowStrength > 0) {
-    // A flat tint over the table, so a win or a bust still colours it.
     ctx.fillStyle = withAlpha(glow, glowStrength * 0.35);
     ctx.fillRect(0, 0, scene.width, scene.height);
   }

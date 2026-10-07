@@ -2,38 +2,7 @@
 
 import type { GameSlug } from '@/components/icons';
 
-/**
- * Drawn poster art for the whole catalogue.
- *
- * All eleven games, one system. The eight raster posters this replaces were
- * already a system — one flat ground, one oversized object in the
- * upper two thirds, a soft off-axis light band, and a fixed lockup at the foot
- * — but it lived in eight separate jpgs, so nothing enforced it and nothing
- * could be changed across the set. Here `Ground` and `Lockup` ARE the system:
- * a new poster cannot drift, because the parts that must match are not
- * redrawn per game.
- *
- * Why redraw the rasters at all: they were sized for the old 168px grid.
- * crash.jpg is 238px wide against a 196px lead-shelf tile, which needs 392px
- * at 2x, so every one of them is soft in the row they were promoted into.
- * Vector has no such ceiling, the whole set is ~2 KB gzipped against 130 KB of
- * jpg, and the names become live text that translates with the rest of the UI.
- *
- * Rendered INLINE, never as `<img src="*.svg">`. An SVG loaded as an image is
- * an isolated document with no access to the page's webfonts or custom
- * properties, so the lockup would silently fall back to a system face and
- * differ per operating system. Inline it takes --fg-display like every other
- * title. Fonts go through `style` rather than a `fontFamily` attribute for the
- * same class of reason: var() in an SVG presentation attribute is unreliable
- * in Safari and fails silently.
- *
- * Colourways are inherited from the jpgs they replace, deliberately. A
- * returning player recognises Mines as the blue one and Roulette as the green
- * one; changing that to suit a palette would cost more than it gained.
- */
-
 interface PosterProps {
-  /** Already-translated game name, from the caller's `t`. */
   name: string;
 }
 
@@ -42,14 +11,6 @@ const KICKER = 'FRIGAT ORIGINALS';
 const DISPLAY = { fontFamily: 'var(--fg-display), system-ui, sans-serif' } as const;
 const BODY = { fontFamily: 'var(--fg-font), system-ui, sans-serif' } as const;
 
-/**
- * Type size for the name, stepped by length.
- *
- * A ladder rather than a measurement, because inline SVG offers no text
- * metrics before paint. The steps were set against rendered proofs at both
- * shelf sizes, in English and Russian — Unbounded is wide enough that 12
- * characters at 40 ran off both edges of the 400-unit box.
- */
 function nameSize(name: string): number {
   const n = name.length;
   if (n <= 5) return 72;
@@ -92,19 +53,12 @@ function Lockup({ name }: PosterProps) {
 }
 
 interface GroundProps {
-  /** Flat ground colour. */
   fill: string;
-  /** The off-axis light sweep. Off for grounds that carry their own scenery. */
   band?: boolean;
   name: string;
   children: React.ReactNode;
 }
 
-/**
- * Everything every poster shares: the 2:3 frame, the flat ground, the
- * light band, and the lockup. `slice` matches the raster contract — the art
- * crops rather than letterboxes when the tile is not exactly 2:3.
- */
 function Ground({
   fill,
   band = true,
@@ -133,9 +87,6 @@ function Ground({
   );
 }
 
-/* ── CRASH — yellow into blue ────────────────────────────
-   The one poster whose object is the curve itself. The band is off: the
-   swoosh is already the off-axis element, and two diagonals fight. */
 export function CrashPoster({ name }: PosterProps) {
   return (
     <Ground fill="#1f57d6" band={false} name={name}>
@@ -160,12 +111,9 @@ export function CrashPoster({ name }: PosterProps) {
   );
 }
 
-/* ── MINES — blue, with the two things on the board ────── */
 export function MinesPoster({ name }: PosterProps) {
   return (
     <Ground fill="#2459cf" name={name}>
-      {/* Gem: a flat crown and a faceted body, the facets a shade apart so it
-          reads as cut stone without a gradient. */}
       <g transform="translate(214 232)">
         <path d="M-74 -34 L 74 -34 L 96 4 L 0 106 L -96 4 Z" fill="#22c55e" />
         <path d="M-74 -34 L 0 4 L 74 -34 L 96 4 L 0 106 L -96 4 Z" fill="#16a34a" />
@@ -173,7 +121,6 @@ export function MinesPoster({ name }: PosterProps) {
         <path d="M0 4 L 96 4 L 0 106 Z" fill="#15803d" />
         <path d="M-52 -24 L -12 -24 L -30 -4 Z" fill="#ffffff" fillOpacity="0.85" />
       </g>
-      {/* Bomb, upper left, small enough to stay the threat rather than the subject. */}
       <g transform="translate(120 150)">
         <circle cx="0" cy="0" r="52" fill="#ef4444" />
         <circle cx="-16" cy="-18" r="12" fill="#ffffff" fillOpacity="0.35" />
@@ -192,7 +139,6 @@ export function MinesPoster({ name }: PosterProps) {
   );
 }
 
-/* ── ROULETTE — table green ─────────────────────────────── */
 export function RoulettePoster({ name }: PosterProps) {
   const seg = (i: number) => {
     const a0 = (i * Math.PI) / 8;
@@ -210,10 +156,8 @@ export function RoulettePoster({ name }: PosterProps) {
         <circle cx="0" cy="0" r="132" fill="none" stroke="#f5f7fa" strokeWidth="7" />
         <circle cx="0" cy="0" r="66" fill="#f5f7fa" />
         <circle cx="0" cy="0" r="52" fill="#0b3f2a" />
-        {/* Ball, resting in a pocket. */}
         <circle cx="94" cy="-88" r="17" fill="#ffffff" />
       </g>
-      {/* Chip, bottom right of the object area. */}
       <g transform="translate(300 316)">
         <circle cx="0" cy="0" r="46" fill="#e11d38" />
         <circle cx="0" cy="0" r="32" fill="#f5f7fa" />
@@ -229,16 +173,9 @@ export function RoulettePoster({ name }: PosterProps) {
   );
 }
 
-/* ── COINFLIP — brass ─────────────────────────────────────
-   Two coins, not one: the same disc caught mid-flip at two angles, which is
-   the game in a picture. The first attempt drew the second coin edge-on as a
-   thin ellipse behind the first and it read as a blob stuck to the top of the
-   poster — a shape only legible if you already knew what it was meant to be.
-   A foreshortened disc at a readable angle carries the idea instead. */
 export function CoinflipPoster({ name }: PosterProps) {
   return (
     <Ground fill="#c08a3a" name={name}>
-      {/* Tails, tilted and behind. */}
       <g transform="translate(268 142) rotate(18)">
         <ellipse cx="0" cy="0" rx="58" ry="74" fill="#b8862f" />
         <ellipse cx="0" cy="0" rx="44" ry="60" fill="#d99521" />
@@ -246,7 +183,6 @@ export function CoinflipPoster({ name }: PosterProps) {
           <rect x="-22" y="-6" width="44" height="12" rx="6" />
         </g>
       </g>
-      {/* Heads, face-on and in front — the object the eye lands on. */}
       <g transform="translate(166 254)">
         <circle cx="0" cy="0" r="112" fill="#8a5a12" fillOpacity="0.35" />
         <circle cx="0" cy="0" r="106" fill="#ffd977" />
@@ -268,7 +204,6 @@ export function CoinflipPoster({ name }: PosterProps) {
   );
 }
 
-/* ── DICE — violet ──────────────────────────────────────── */
 export function DicePoster({ name }: PosterProps) {
   const pips = (xs: number[][], fill: string) =>
     xs.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="11" fill={fill} />);
@@ -286,7 +221,6 @@ export function DicePoster({ name }: PosterProps) {
   );
 }
 
-/* ── PLINKO — violet into magenta ───────────────────────── */
 export function PlinkoPoster({ name }: PosterProps) {
   const pegs: [number, number][] = [];
   for (let row = 0; row < 5; row++) {
@@ -302,7 +236,6 @@ export function PlinkoPoster({ name }: PosterProps) {
           <circle key={i} cx={x} cy={y} r="13" />
         ))}
       </g>
-      {/* The falling coin, mid-board, with the payout it is heading for. */}
       <circle cx="236" cy="256" r="30" fill="#fbbf24" />
       <circle cx="236" cy="256" r="15" fill="#b45309" />
       <g transform="translate(74 78)">
@@ -323,7 +256,6 @@ export function PlinkoPoster({ name }: PosterProps) {
   );
 }
 
-/* ── LIMBO — orange into yellow ─────────────────────────── */
 export function LimboPoster({ name }: PosterProps) {
   return (
     <Ground fill="#fcae42" name={name}>
@@ -346,12 +278,9 @@ export function LimboPoster({ name }: PosterProps) {
   );
 }
 
-/* ── KENO — blue into cyan ──────────────────────────────── */
 export function KenoPoster({ name }: PosterProps) {
   return (
     <Ground fill="#2399ec" name={name} band={false}>
-      {/* Card grid, drawn as hairlines rather than boxes so the marked ball is
-          the only solid object on the ground. */}
       <g stroke="#ffffff" strokeOpacity="0.28" strokeWidth="4">
         {[130, 226, 322].map((x) => (
           <line key={x} x1={x} y1="60" x2={x} y2="392" />
@@ -365,7 +294,6 @@ export function KenoPoster({ name }: PosterProps) {
         <text x="178" y="290" fontSize="56">10</text>
         <text x="274" y="372" fontSize="56">11</text>
       </g>
-      {/* The hit. */}
       <g transform="translate(300 176)">
         <rect x="-58" y="-58" width="116" height="116" rx="20" fill="#22c55e" />
         <rect x="-58" y="-58" width="116" height="116" rx="20" fill="#ffffff" fillOpacity="0.14" />
@@ -385,11 +313,9 @@ export function KenoPoster({ name }: PosterProps) {
   );
 }
 
-/* ── CHICKEN — violet, with the road ────────────────────── */
 export function ChickenPoster({ name }: PosterProps) {
   return (
     <Ground fill="#6f50ef" name={name} band={false}>
-      {/* Crossing, in perspective: stripes widen toward the viewer. */}
       <g fill="#ffffff" fillOpacity="0.16">
         {[0, 1, 2, 3].map((i) => (
           <path
@@ -399,23 +325,17 @@ export function ChickenPoster({ name }: PosterProps) {
         ))}
       </g>
       <g transform="translate(200 218)">
-        {/* Body, then head — two circles and a tail wedge, kept simple so the
-            silhouette survives at 132px. */}
         <path d="M-96 26 L -58 -12 L -44 34 Z" fill="#f1f5f9" />
         <ellipse cx="0" cy="26" rx="86" ry="76" fill="#ffffff" />
         <circle cx="6" cy="-56" r="52" fill="#ffffff" />
-        {/* Comb */}
         <g fill="#ef4444">
           <circle cx="-14" cy="-104" r="15" />
           <circle cx="8" cy="-112" r="17" />
           <circle cx="30" cy="-104" r="15" />
         </g>
-        {/* Eye and beak */}
         <circle cx="20" cy="-64" r="8" fill="#111827" />
         <path d="M48 -54 L 78 -44 L 48 -34 Z" fill="#f97316" />
-        {/* Wattle */}
         <path d="M40 -30 C 52 -14 44 2 32 -2 Z" fill="#ef4444" />
-        {/* Legs */}
         <g stroke="#f97316" strokeWidth="10" strokeLinecap="round">
           <path d="M-26 96 L -26 122" />
           <path d="M26 96 L 26 122" />
@@ -427,14 +347,11 @@ export function ChickenPoster({ name }: PosterProps) {
   );
 }
 
-/* ── SLOTS — crimson ────────────────────────────────────── */
 export function SlotsPoster({ name }: PosterProps) {
   return (
     <Ground fill="#b62138" name={name}>
       <rect x="72" y="112" width="256" height="216" rx="22" fill="#e0b055" />
       <rect x="92" y="134" width="216" height="172" rx="12" fill="#2a0710" />
-      {/* Middle reel sits high, so the row reads as still spinning rather than
-          as a settled, symmetrical logo. */}
       <rect x="102" y="144" width="62" height="152" rx="8" fill="#fff6f7" />
       <rect x="169" y="144" width="62" height="152" rx="8" fill="#fff6f7" />
       <rect x="236" y="144" width="62" height="152" rx="8" fill="#fff6f7" />
@@ -456,7 +373,6 @@ export function SlotsPoster({ name }: PosterProps) {
   );
 }
 
-/* ── AVIA MASTERS — turquoise ───────────────────────────── */
 export function AviaPoster({ name }: PosterProps) {
   return (
     <Ground
@@ -464,8 +380,6 @@ export function AviaPoster({ name }: PosterProps) {
       band={false}
       name={name}
     >
-      {/* Every circle sits on one baseline so the flat-bottomed cloud has no
-          step where the base rect meets a smaller circle. */}
       <g fill="#ffffff" fillOpacity="0.22">
         <circle cx="72" cy="128" r="30" />
         <circle cx="110" cy="140" r="18" />
@@ -478,8 +392,6 @@ export function AviaPoster({ name }: PosterProps) {
         <circle cx="292" cy="336" r="16" />
         <rect x="292" y="330" width="70" height="22" />
       </g>
-      {/* Dashed, so it reads as a path already flown. A solid rising curve is
-          crash's, on crash's poster. */}
       <path
         d="M 26 396 C 118 388 200 322 268 196"
         fill="none"
@@ -500,11 +412,6 @@ export function AviaPoster({ name }: PosterProps) {
   );
 }
 
-/**
- * Every slug in the catalogue. GameCard resolves GAME_POSTERS first, so the
- * jpgs in /public are now unreferenced — they are kept on disk rather than
- * deleted so this is revertible by removing one import.
- */
 export const GAME_POSTERS: Record<GameSlug, (props: PosterProps) => JSX.Element> = {
   crash: CrashPoster,
   mines: MinesPoster,

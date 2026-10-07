@@ -1,23 +1,3 @@
-/**
- * FRIGAT — Authenticator-app two-factor (RFC 6238 TOTP)
- *
- * Works with Google Authenticator, Authy, 1Password and anything else that
- * reads an `otpauth://totp/` URI: SHA-1, 6 digits, 30-second steps.
- *
- * Three rules, all enforced here rather than left to callers:
- *
- *   1. The secret is never stored in the clear. It is sealed with AES-256-GCM
- *      under a key derived from the server secret, so a database dump alone
- *      does not hand out working second factors.
- *   2. A code is accepted for its own step and one either side (clock drift),
- *      and never for a step at or before the last one accepted — so a code
- *      someone watched being typed cannot be replayed.
- *   3. Backup codes are stored only as HMACs and are single-use.
- *
- * Brute force is the caller's job: a 6-digit code is only safe behind the
- * throttles in rateLimit.service, which every route that checks one applies.
- */
-
 import {
   createCipheriv,
   createDecipheriv,
@@ -33,15 +13,10 @@ import { prisma } from '../config/prisma';
 export const TOTP = {
   digits: 6,
   stepSeconds: 30,
-  /** Steps either side of now that still count, for clock drift. */
   window: 1,
   issuer: 'FRIGAT',
   backupCodes: 8,
 } as const;
-
-// ─────────────────────────────────────────────
-// Base32 (RFC 4648, no padding) — the encoding authenticator apps expect
-// ─────────────────────────────────────────────
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
@@ -77,11 +52,6 @@ export function base32Decode(text: string): Buffer {
   return Buffer.from(out);
 }
 
-// ─────────────────────────────────────────────
-// Codes
-// ─────────────────────────────────────────────
-
-/** The HOTP value for one counter (RFC 4226). */
 export function hotp(secret: Buffer, counter: number): string {
   const msg = Buffer.alloc(8);
   msg.writeBigUInt64BE(BigInt(counter));
@@ -99,10 +69,6 @@ export function currentStep(nowMs = Date.now()): number {
   return Math.floor(nowMs / 1000 / TOTP.stepSeconds);
 }
 
-/**
- * The step `code` is valid for, or null. Steps at or below `lastStep` are
- * refused — that is the replay guard.
- */
 export function matchStep(
   base32Secret: string,
   code: string,
@@ -123,7 +89,6 @@ export function matchStep(
 }
 
 export function generateSecret(): string {
-  // 160 bits, the size RFC 4226 recommends and every app accepts.
   return base32Encode(randomBytes(20));
 }
 
@@ -139,13 +104,8 @@ export function otpauthUri(base32Secret: string, account: string): string {
   return `otpauth://totp/${label}?${params.toString()}`;
 }
 
-// ─────────────────────────────────────────────
-// Sealing the secret at rest
-// ─────────────────────────────────────────────
-
 const sealKey = createHash('sha256').update(`frigat:totp-seal:${config.jwtSecret}`).digest();
 
-/** `iv.tag.ciphertext`, base64url each. */
 export function sealSecret(base32Secret: string): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', sealKey, iv);
@@ -162,16 +122,10 @@ export function openSecret(sealed: string): string | null {
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(body), decipher.final()]).toString('utf8');
   } catch {
-    // Tampered, or sealed under a different server secret.
     return null;
   }
 }
 
-// ─────────────────────────────────────────────
-// Backup codes
-// ─────────────────────────────────────────────
-
-/** Normalised so `abcd-efgh` and `ABCDEFGH` are the same code. */
 function normaliseBackup(code: string): string {
   return code.toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
@@ -182,7 +136,6 @@ export function hashBackupCode(code: string): string {
     .digest('hex');
 }
 
-/** Fresh codes in `XXXX-XXXX` form, plus the hashes to store. */
 export function generateBackupCodes(): { codes: string[]; hashes: string[] } {
   const codes = Array.from({ length: TOTP.backupCodes }, () => {
     const raw = base32Encode(randomBytes(5)).slice(0, 8);
@@ -191,7 +144,6 @@ export function generateBackupCodes(): { codes: string[]; hashes: string[] } {
   return { codes, hashes: codes.map(hashBackupCode) };
 }
 
-/** Index of the matching stored hash, or -1. Constant-time per comparison. */
 export function findBackupCode(code: string, hashes: readonly string[]): number {
   if (normaliseBackup(code).length !== 8) return -1;
   const given = Buffer.from(hashBackupCode(code), 'hex');
@@ -202,10 +154,6 @@ export function findBackupCode(code: string, hashes: readonly string[]): number 
   });
   return found;
 }
-
-// ─────────────────────────────────────────────
-// One check for every route that accepts a second factor
-// ─────────────────────────────────────────────
 
 export interface SecondFactorState {
   totpSecret: string | null;
@@ -218,11 +166,6 @@ export type SecondFactorResult =
   | { ok: true; via: 'backup'; remaining: string[] }
   | { ok: false };
 
-/**
- * Accepts either a current authenticator code or an unused backup code. The
- * caller persists what changed — the new last step, or the backup list with
- * the spent code removed — in the same write that acts on the success.
- */
 export function checkSecondFactor(state: SecondFactorState, input: string): SecondFactorResult {
   const code = input.trim();
   if (state.totpSecret) {
@@ -243,12 +186,6 @@ export function checkSecondFactor(state: SecondFactorState, input: string): Seco
   return { ok: false };
 }
 
-/**
- * Checks a code for `userId` and spends it in one conditional write, so two
- * requests racing with the same code cannot both succeed: the TOTP step only
- * advances if nobody advanced it past this step first, and a backup code is
- * only removed if it is still there.
- */
 export async function spendSecondFactor(userId: string, input: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
     where: { id: userId },

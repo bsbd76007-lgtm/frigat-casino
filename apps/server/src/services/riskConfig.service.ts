@@ -140,10 +140,6 @@ export interface LimitUpdate {
   maxWin: string;
 }
 
-/**
- * Replaces the risk configuration inside one transaction together with its
- * audit entry, so a settings change is never recorded half-applied.
- */
 export async function writeRiskConfig(params: {
   adminId: string;
   maintenanceMode: boolean;

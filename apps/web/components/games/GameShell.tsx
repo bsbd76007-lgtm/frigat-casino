@@ -28,10 +28,6 @@ export function GameShell({
   const { historyFor, socket, setFairnessOpen } = useGameSocket();
   const entries = history ?? historyFor(gameType);
 
-  // Every socket game funnels through this shell, so one effect covers all of
-  // them. The socket rejecting the token means the same thing a 401 does on the
-  // HTTP games: the session is gone, and no amount of staring at a banner will
-  // bring it back.
   useEffect(() => {
     if (socket.status === 'unauthorized') handleSessionExpiry();
   }, [socket.status]);

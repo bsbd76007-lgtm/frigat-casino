@@ -104,17 +104,6 @@ export const SECTIONS: ReadonlyArray<{
   { id: 'new', titleKey: 'home.sections.new' },
 ];
 
-/**
- * Poster art in /public, keyed by slug.
- *
- * Every entry must exist in public/ or the card 404s its own art. A slug left
- * out here is not a bug — GameCard falls back to the SVG icon, which is what
- * keeps the grid whole for games whose poster has not been supplied yet.
- *
- * A slug left out renders its SVG icon instead — the fallback is what kept the
- * grid whole while art was still being supplied, and it stays in place for any
- * game added before its poster exists.
- */
 export const GAME_ART: Partial<Record<GameSlug, string>> = {
   crash: '/crash.jpg',
   mines: '/mines.jpg',
@@ -127,16 +116,6 @@ export const GAME_ART: Partial<Record<GameSlug, string>> = {
   chicken: '/chicken.jpg',
 };
 
-/**
- * The filter pills.
- *
- * Every id here MUST be attached to at least one CATALOGUE entry. Megaways,
- * Bonus Buy, Hold and Win and Live Casino were offered and matched nothing, so
- * a third of the filter bar led to the empty state — and all four are
- * slot-provider vocabulary for a catalogue of eleven in-house originals that
- * are none of those things. A filter that can never return a result is a dead
- * end, not a category.
- */
 export const CATEGORIES: ReadonlyArray<{
   id: GameCategory;
   labelKey: string;

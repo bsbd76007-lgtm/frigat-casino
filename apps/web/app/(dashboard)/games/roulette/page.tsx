@@ -38,34 +38,18 @@ export default function RoulettePage() {
   const [phase, setPhase] = useState<RoulettePhase>('IDLE');
   const [pocket, setPocket] = useState<number | null>(null);
   const [lastWin, setLastWin] = useState<boolean | null>(null);
-  /**
-   * The settled round, held back until the wheel finishes. The server answers
-   * an instant game in milliseconds; applying it on arrival announced the
-   * outcome while the ball was still in the air.
-   */
   const pendingRef = useRef<{ pocket: number; win: boolean } | null>(null);
-  /**
-   * Balance as it stood when the spin began. The wallet is server-pushed and
-   * updates the moment the round settles, so the panel would otherwise show
-   * the payout before the wheel revealed it.
-   */
   const [heldBalance, setHeldBalance] = useState<string | null>(null);
 
-  // autoSettle is off: the ball is still in the air when the server answers,
-  // and revealResult below is what ends the round.
   const { busy, bet, settle } = useGameRound<{ pocket?: number }>('ROULETTE', {
     autoSettle: false,
     onResult: ({ result, win }) => {
       if (typeof result?.pocket !== 'number') return;
 
-      // The pocket goes to the canvas so it can aim the ball, but the phase
-      // stays SPINNING and the win/loss stays hidden until it lands.
       pendingRef.current = { pocket: result.pocket, win };
       setPocket(result.pocket);
     },
     onError: () => {
-      // A rejected bet never spins, so nothing is pending and the held
-      // balance must be released or the panel would freeze on a stale value.
       pendingRef.current = null;
       setHeldBalance(null);
       setPhase('IDLE');
@@ -74,7 +58,6 @@ export default function RoulettePage() {
 
   const activePosition = straight.trim() !== '' ? `straight:${straight.trim()}` : position;
 
-  /** Runs when the ball settles: only now does the round become a result. */
   const revealResult = () => {
     const settled = pendingRef.current;
     pendingRef.current = null;

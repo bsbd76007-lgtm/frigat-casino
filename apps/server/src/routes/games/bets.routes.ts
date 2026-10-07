@@ -37,8 +37,6 @@ export function registerBetRoutes(app: FastifyInstance) {
         userId: row.userId,
         username: publicHandle(row.userId),
         gameType: row.gameType,
-        // Decimal → string: these are money values and must not go through a
-        // JS number on the way to the client.
         betAmount: row.betAmount.toString(),
         payout: row.payout.toString(),
         multiplier: row.multiplier,

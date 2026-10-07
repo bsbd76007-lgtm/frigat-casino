@@ -32,7 +32,6 @@ export interface PlinkoCanvasProps {
 const LANDED_FLASH_MS = 700;
 const PEG_R = 3;
 const BALL_R = 6;
-/** Tall enough for the payout to be read at a glance, not squinted at. */
 const SLOT_H = 36;
 
 export function bucketOf(drop: PlinkoDrop): number {
@@ -45,15 +44,6 @@ interface DropRuntime {
   completed: boolean;
 }
 
-/**
- * Front-on and flat: the peg triangle, the ball falling through it, the payout
- * slots underneath.
- *
- * The board is read as a shape — where in the triangle the ball is, and which
- * slot it is heading for — and a tilted camera makes the slots nearest the
- * bottom of the screen read as bigger than the ones at the edges, which is
- * exactly the comparison the player is trying to make.
- */
 export function PlinkoCanvas({
   rows,
   multipliers,
@@ -88,7 +78,6 @@ export function PlinkoCanvas({
   const draw = useMemo(
     () =>
       ({ ctx, width, height: h }: CanvasFrame) => {
-        // The board paints its own surface so the pegs can stand out of it.
         ctx.fillStyle = THEME.surface;
         ctx.fillRect(0, 0, width, h);
 
@@ -97,8 +86,6 @@ export function PlinkoCanvas({
         const topY = 24;
         const fieldH = Math.max(1, h - topY - SLOT_H - 20);
         const rowGap = fieldH / Math.max(1, rows);
-        // Allowed to spread wider than it is tall: the payout slots take their
-        // width from this, and wider slots are what let the numbers be read.
         const spacing = Math.min(rowGap * 1.5, (width - padX * 2) / Math.max(1, bucketCount));
         const cx = width / 2;
         const slotY = topY + rows * rowGap + 12;
@@ -108,7 +95,6 @@ export function PlinkoCanvas({
 
         const now = performance.now();
 
-        // Pegs, as one path so the whole field is lifted in a single pass.
         const pegs = new Path2D();
         for (let level = 0; level < rows; level += 1) {
           for (let j = 0; j <= level; j += 1) {
@@ -123,7 +109,6 @@ export function PlinkoCanvas({
           ctx.fill(pegs);
         }, 0.45);
 
-        // Payout slots.
         const slotW = spacing * 0.92;
         for (let b = 0; b < bucketCount; b += 1) {
           const multiplier = multipliers[b] ?? 0;
@@ -132,7 +117,6 @@ export function PlinkoCanvas({
           const flash = landedAt ? Math.max(0, 1 - (now - landedAt) / LANDED_FLASH_MS) : 0;
 
           const x = nodeX(b, rows) - slotW / 2;
-          // A ball landing knocks its slot down, and it springs back.
           const y = slotY + (reducedMotion ? 0 : flash * 4);
 
           roundedRect(ctx, x, y, slotW, SLOT_H, 5);
@@ -142,8 +126,6 @@ export function PlinkoCanvas({
           ctx.lineWidth = 1 + flash;
           ctx.stroke();
 
-          // The mid slots are the dullest colour on the board, so their label
-          // takes the text ramp rather than the slot's own near-grey.
           ctx.fillStyle = flash > 0.35 ? '#141419' : multiplier < 2 ? BOARD.muted : colour;
           ctx.font = `800 ${Math.max(11, Math.min(17, slotW * 0.42))}px ${FONT.num}`;
           ctx.textAlign = 'center';
@@ -152,12 +134,10 @@ export function PlinkoCanvas({
             multiplier >= 100 ? `${Math.round(multiplier)}x` : `${multiplier}x`,
             x + slotW / 2,
             y + SLOT_H / 2,
-            // Clamped, or a four-digit multiplier runs into the next slot.
             slotW - 6
           );
         }
 
-        // Balls.
         for (const drop of drops) {
           const runtime = runtimeRef.current.get(drop.id);
           if (!runtime) continue;
@@ -191,7 +171,6 @@ export function PlinkoCanvas({
             const toY = nodeY(segment + 1);
             const easeX = t * t * (3 - 2 * t);
             x = fromX + (toX - fromX) * easeX;
-            // Falls with gravity, and hops a little off each peg.
             y = fromY + (toY - fromY) * (t * t) - Math.sin(t * Math.PI) * rowGap * 0.14;
           }
 

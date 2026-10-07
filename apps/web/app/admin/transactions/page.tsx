@@ -17,7 +17,7 @@ interface LedgerResponse {
 }
 
 async function loadLedger(params: { q?: string; type?: string; status?: string; skip: number }) {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const base = API_URL;
   const search = new URLSearchParams({ take: '25', skip: String(params.skip) });
   if (params.q) search.set('q', params.q);
@@ -37,10 +37,11 @@ async function loadLedger(params: { q?: string; type?: string; status?: string; 
 }
 
 export default async function TransactionsPage({
-  searchParams,
+  searchParams: pendingSearchParams,
 }: {
-  searchParams: { q?: string; type?: string; status?: string; skip?: string };
+  searchParams: Promise<{ q?: string; type?: string; status?: string; skip?: string }>;
 }) {
+  const searchParams = await pendingSearchParams;
   const result = await loadLedger({
     q: searchParams.q?.trim(),
     type: searchParams.type,

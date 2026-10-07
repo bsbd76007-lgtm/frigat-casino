@@ -1,24 +1,3 @@
-/**
- * FRIGAT — Mines Engine
- *
- * A 5×5 grid (25 tiles). `minesCount` tiles are mines; the rest are safe.
- * The player reveals tiles one at a time; hitting a mine ends the game with a
- * total loss. Cashing out pays the accumulated multiplier.
- *
- * Layout is a provable Fisher-Yates shuffle of tile indices — the first
- * `minesCount` positions of the shuffle are the mines. Because the shuffle is
- * derived from (serverSeed, clientSeed, nonce), the player can reproduce the
- * exact mine layout once the server seed is revealed.
- *
- * Fair multiplier after k safe reveals (T = total tiles, M = mines):
- *
- *     fair(k) = Π_{i=0}^{k-1}  (T - i) / (T - M - i)
- *     payout(k) = fair(k) · (1 - houseEdge)
- *
- * This is the reciprocal of the probability of surviving k reveals, so EV per
- * reveal is neutral before the edge.
- */
-
 import { HOUSE_EDGE, MINES } from '../config/game.config';
 import { provableShuffle } from './provable';
 import type { SeedContext } from '../types/engine.types';
@@ -31,13 +10,6 @@ export interface MinesLayout {
   minesCount: number;
 }
 
-/**
- * Throws unless `minesCount` is a legal board.
- *
- * Exported separately so a caller can validate BEFORE taking the player's
- * stake. generateLayout still calls it, so the engine cannot be driven into an
- * illegal state by a caller that forgets.
- */
 export function assertValidMinesCount(minesCount: number): void {
   if (
     !Number.isInteger(minesCount) ||

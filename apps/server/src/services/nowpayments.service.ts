@@ -1,27 +1,3 @@
-/**
- * FRIGAT — NOWPayments gateway client
- *
- * Speaks the two calls a deposit needs — create a payment, and verify the IPN
- * that reports it paid — and nothing else. Crediting stays in payment.service:
- * this file never touches a wallet, so there is still exactly one place money
- * enters the ledger regardless of which gateway opened the invoice.
- *
- * ── Amount semantics ───────────────────────────────────────────────────────
- * The invoice is priced in USD (`price_amount` / `price_currency: usd`) and the
- * player settles it in the crypto they picked (`pay_currency`). That matters:
- * the ledger wallet is USD, so pricing in USD means the figure credited on
- * `finished` is the figure the player asked to deposit, whatever the asset did
- * between opening the invoice and paying it. Crediting `actually_paid` instead
- * would put crypto units into a USD balance.
- *
- * ── IPN signature ──────────────────────────────────────────────────────────
- * NOWPayments signs the callback with HMAC-SHA512 over the JSON body with its
- * top-level keys sorted, keyed by the IPN secret, and sends it in
- * `x-nowpayments-sig`. That is their reference implementation (PHP: `ksort`
- * then `json_encode` with unescaped slashes), and it is reproduced exactly
- * here — a signature scheme that is "close enough" verifies nothing.
- */
-
 import { createHmac, timingSafeEqual } from 'crypto';
 import type { CryptoPaymentStatus } from '@prisma/client';
 
@@ -29,17 +5,13 @@ import { config } from '../config';
 
 export const NOWPAYMENTS_PROVIDER = 'NOWPAYMENTS';
 
-/** Currency codes NOWPayments knows, per asset we offer. */
 const PAY_CURRENCY: Record<string, string> = {
-  // TRC-20 specifically: the deposit modal already labels USDT as TRON, and an
-  // unqualified "usdt" lets the gateway pick a chain the player was not shown.
   USDT: 'usdttrc20',
   BTC: 'btc',
   ETH: 'eth',
   LTC: 'ltc',
 };
 
-/** Network shown in the UI beside the address, per asset. */
 const NETWORK_LABEL: Record<string, string> = {
   USDT: 'TRC-20',
   BTC: 'Bitcoin',
@@ -69,12 +41,6 @@ export class NowPaymentsError extends Error {
   }
 }
 
-/**
- * Maps NOWPayments' payment_status onto the gateway status the schema already
- * models. `partially_paid` deliberately lands on WRONG_AMOUNT rather than a
- * settled state — see the note in payment.service about why a short payment is
- * not credited automatically.
- */
 const STATUS_MAP: Record<string, CryptoPaymentStatus> = {
   waiting: 'PENDING',
   confirming: 'CONFIRMING',
@@ -149,25 +115,9 @@ async function request<T>(
   return parsed as T;
 }
 
-/** Liveness probe. Used by the admin/config surface, never on the hot path. */
 export async function nowPaymentsStatus(): Promise<{ message: string }> {
   return request<{ message: string }>('/status', { method: 'GET' });
 }
-
-// ─────────────────────────────────────────────
-// Mass Payouts
-//
-// Payouts are a different animal from deposits. Creating one needs a *bearer
-// JWT* on top of the API key, obtained from POST /v1/auth with the account's
-// email and password — the API key alone cannot move money out, which is the
-// correct design on NOWPayments' part. Beyond that, NOWPayments requires each
-// payout batch to be verified with a 2FA code (POST /v1/payout/{id}/verify)
-// before it is actually sent, and that code comes from a human's authenticator
-// app. So this client can *create* a batch; it cannot complete one unattended.
-//
-// Consequence for us: with only an API key configured, withdrawals queue for
-// admin review rather than failing. See createWithdrawal.
-// ─────────────────────────────────────────────
 
 export function isPayoutConfigured(): boolean {
   return (
@@ -177,7 +127,6 @@ export function isPayoutConfigured(): boolean {
   );
 }
 
-/** Exchanges the account credentials for a short-lived bearer token. */
 async function authenticate(): Promise<string> {
   const auth = await request<{ token?: string }>('/auth', {
     method: 'POST',
@@ -194,7 +143,6 @@ async function authenticate(): Promise<string> {
 
 export interface PayoutRecipient {
   address: string;
-  /** Asset code as NOWPayments names it, e.g. usdttrc20. */
   currency: string;
   amount: string;
 }
@@ -211,11 +159,6 @@ export interface NowPaymentsPayoutBatch {
   }>;
 }
 
-/**
- * Creates a payout batch. The batch comes back in NOWPayments' own pending
- * state — typically `WAITING` for 2FA verification — so the caller must treat a
- * success here as "accepted for dispatch", never as "paid".
- */
 export async function createPayout(
   recipients: PayoutRecipient[]
 ): Promise<NowPaymentsPayoutBatch> {
@@ -240,16 +183,13 @@ export interface NowPaymentsPayment {
   pay_amount: number;
   pay_currency: string;
   order_id?: string | null;
-  /** Present only when the invoice carries a deadline. */
   expiration_estimate_date?: string | null;
   valid_until?: string | null;
   payin_extra_id?: string | null;
 }
 
 export interface CreatePaymentInput {
-  /** USD price of the invoice, decimal string. */
   amount: string;
-  /** Asset the player settles in (USDT / BTC / ETH / LTC). */
   currency: string;
   orderId: string;
   description?: string;
@@ -273,27 +213,23 @@ export async function createNowPayment(
   });
 }
 
-/**
- * Serialises a callback body the way NOWPayments signs it: top-level keys in
- * alphabetical order, everything else left as-is.
- *
- * Only the top level is sorted, matching PHP's `ksort` on the decoded body —
- * sorting recursively would produce a different string and reject every genuine
- * callback.
- */
-export function canonicalIpnPayload(body: Record<string, unknown>): string {
+function sortKeysDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeysDeep);
+  if (value === null || typeof value !== 'object') return value;
+  const source = value as Record<string, unknown>;
   const sorted: Record<string, unknown> = {};
-  for (const key of Object.keys(body).sort()) sorted[key] = body[key];
-  return JSON.stringify(sorted);
+  for (const key of Object.keys(source).sort()) sorted[key] = sortKeysDeep(source[key]);
+  return sorted;
 }
 
-/**
- * Verifies `x-nowpayments-sig`.
- *
- * Returns false rather than throwing on a malformed or absent signature: an
- * unsigned callback is simply not authentic, and the route answers all of them
- * the same way so a prober learns nothing from the difference.
- */
+export function canonicalIpnPayload(body: Record<string, unknown>): string {
+  return JSON.stringify(sortKeysDeep(body));
+}
+
+export function isKnownNowPaymentsStatus(raw: unknown): boolean {
+  return typeof raw === 'string' && raw.toLowerCase() in STATUS_MAP;
+}
+
 export function verifyIpnSignature(
   body: Record<string, unknown>,
   signature: unknown
@@ -308,8 +244,6 @@ export function verifyIpnSignature(
 
   const a = Buffer.from(expected, 'utf8');
   const b = Buffer.from(signature.trim().toLowerCase(), 'utf8');
-  // Length must be compared first: timingSafeEqual throws on a mismatch, and
-  // the length of a hex digest is not a secret.
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }

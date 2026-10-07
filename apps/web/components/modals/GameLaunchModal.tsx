@@ -1,30 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Game launcher
- *
- * Opens over the grid when a card is clicked: game title, category badge, live
- * RTP, and a launch panel that hands off to the full game page.
- *
- * On the game frame: the eight originals are not embeddable panels. Each one is
- * a route with its own canvas, bet controls and a live socket subscription for
- * balance and round state — Crash alone runs a requestAnimationFrame loop
- * against a shared round clock. Mounting that inside a dialog would open a
- * second socket subscription for the same player, which is exactly the race the
- * GameSocketProvider exists to prevent. So this modal previews the game and
- * launches it; it does not try to be a second host for it.
- *
- * There is no iframe branch. FRIGAT integrates no third-party studios — no
- * aggregator, no provider credentials — so an iframe container here would be an
- * empty box waiting for a game that cannot arrive.
- *
- * Demo mode is absent for the same reason it is absent everywhere else: every
- * bet settles through the real ledger, and a practice balance needs a
- * server-side play mode that does not exist yet. The button offers the
- * fairness dialog instead, which is the honest version of "try before you
- * stake" — inspect the seeds and the maths first.
- */
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
@@ -130,9 +105,6 @@ export function GameLaunchModal({
             </h2>
             <div className="glm__meta">
               <span className="glm__badge">{t(`home.filters.${badge}`)}</span>
-              {/* Omitted rather than shown as a placeholder while it loads or
-                  if the lookup failed: blank is honest, "--%" reads as a real
-                  value that happens to be missing. */}
               {rtp !== null && (
                 <span className="glm__rtp">
                   {t('launch.rtp')} <b>{rtp.toFixed(2)}%</b>
@@ -186,9 +158,6 @@ export function GameLaunchModal({
           <button type="button" className="glm__play" onClick={launch}>
             {t('launch.play')}
           </button>
-          {/* Not a demo round — see the note at the top of this file. This
-              opens the fairness dialog, where the seeds and the maths are
-              inspectable before anything is staked. */}
           <button
             type="button"
             className="glm__fair"

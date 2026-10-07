@@ -17,7 +17,8 @@
     "lint": "eslint .",
     "prisma:deploy": "prisma migrate deploy",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -38,5 +39,8 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "overrides": {
+    "postcss": "^8.5.29"
   }
 }

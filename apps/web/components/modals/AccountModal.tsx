@@ -1,25 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Account panel
- *
- * The player's own profile, wallet, security state and VIP standing in one
- * dialog, opened from the avatar button in the header.
- *
- * Three sources, deliberately:
- *  - `GET /api/auth/me` for identity (id, email, role, join date, frozen flag).
- *    A returning visitor arrives with nothing but a stored JWT, so the profile
- *    the login response returned once is long gone by then.
- *  - the socket context for the balance, because that is the only thing on the
- *    client that tracks the ledger live — re-reading a balance over HTTP here
- *    would show a stale number the moment a bet settles behind the dialog.
- *  - `GET /api/vip/me` for tier and rakeback, which degrades to a hidden
- *    section rather than an error if the endpoint is unavailable.
- *
- * Nothing here can move money: it reads, and the two actions it offers hand off
- * to the fairness dialog and the VIP page.
- */
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
@@ -97,11 +77,8 @@ const CSS = `
 .acc__close:hover { color: var(--fg-text); background: var(--fg-line); }
 .acc__close:focus-visible { outline: none; box-shadow: var(--fg-ring); }
 
-/* Identity strip: avatar initial plus the address the account is known by. */
 .acc__ident { display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
   padding: 8px; background: var(--fg-sunken); border: 1px solid var(--fg-line); border-radius: var(--fg-r-lg); }
-/* The brand monogram, replacing the amber initial disc. White ink with real
-   transparency, so it needs no invert treatment on the dark panel. */
 .acc__mark { flex: 0 0 auto; height: 28px; width: auto; object-fit: contain; }
 html[data-theme='light'] .acc__mark { filter: invert(1); }
 .acc__ident-name { font-size: 15px; font-weight: 700; letter-spacing: -.01em;
@@ -156,7 +133,6 @@ html[data-theme='light'] .acc__mark { filter: invert(1); }
 .acc__state { padding: 16px 0; font-size: 13px; text-align: center; color: var(--fg-dim); }
 .acc__state--error { color: #c25560; }
 
-/* ── Change password sub-view ── */
 .acc__back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px;
   padding: 0; font-family: inherit; font-size: 12px; font-weight: 700; color: var(--fg-muted);
   background: none; border: 0; cursor: pointer; }
@@ -240,13 +216,6 @@ export function AccountModal({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // ── Change password ──
-  //
-  // The same emailed-code flow the signed-out reset page uses, rather than a
-  // "current password + new password" endpoint. Two reasons: that endpoint does
-  // not exist server-side, and possession of the inbox is a stronger proof than
-  // a password typed into a session that is already open — a borrowed laptop
-  // with a live session cannot change the password without the mail too.
   const [view, setView] = useState<'overview' | 'password'>('overview');
   const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
   const [digits, setDigits] = useState<string[]>(emptyDigits);
@@ -265,9 +234,6 @@ export function AccountModal({
   useEffect(() => setIsMounted(true), []);
 
   const load = useCallback(async () => {
-    // No token at all: there is no account to show and no request worth making.
-    // Previously this returned silently, leaving an empty panel open with no
-    // way forward. Hand off to sign-in instead.
     if (!token) {
       onClose();
       handleSessionExpiry();
@@ -279,11 +245,6 @@ export function AccountModal({
     try {
       setProfile(await apiJson<AccountProfile>('api/auth/me'));
     } catch (err) {
-      // A 401 is not something the player can retry their way out of — the
-      // session is gone. The bare `catch` here used to turn it into "Could not
-      // load your account details", which reads as a server fault and leaves a
-      // dead token in localStorage so every later call fails the same way.
-      // consumedAsSessionExpiry clears it and redirects to /login?error=invalid.
       if (consumedAsSessionExpiry(err)) {
         onClose();
         return;
@@ -293,9 +254,6 @@ export function AccountModal({
       setLoading(false);
     }
 
-    // VIP is supporting detail: a failure here leaves the section hidden rather
-    // than failing the whole panel. An expiry is still worth acting on, but the
-    // profile call above will have caught it first in every ordinary case.
     try {
       setVip(await apiJson<VipSummary>('api/vip/me'));
     } catch (err) {
@@ -304,8 +262,6 @@ export function AccountModal({
     }
   }, [token, t, onClose]);
 
-  // Fetched on open rather than on mount: the panel lives in the header on
-  // every page, and a dialog nobody opened should not be polling the API.
   useEffect(() => {
     if (open) void load();
   }, [open, load]);
@@ -350,7 +306,6 @@ export function AccountModal({
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       copyTimerRef.current = setTimeout(() => setCopied(false), 1600);
     } catch {
-      /* clipboard unavailable — the id is selectable in place */
     }
   }, [profile]);
 
@@ -361,7 +316,6 @@ export function AccountModal({
     [onClose]
   );
 
-  /** Clears the password sub-view. Called on close and on returning to the overview. */
   const resetPasswordView = useCallback(() => {
     setView('overview');
     setChallenge(null);
@@ -373,9 +327,6 @@ export function AccountModal({
     setTurnstileToken('');
   }, []);
 
-  // A half-finished password change must not be sitting there on reopen — the
-  // code will have expired, and a filled-in new password left in state is
-  // exactly what should not survive the dialog closing.
   useEffect(() => {
     if (!open) {
       resetPasswordView();
@@ -383,8 +334,6 @@ export function AccountModal({
     }
   }, [open, resetPasswordView]);
 
-  // Resend countdown, anchored to a deadline so a backgrounded tab does not
-  // drift out of step with the server's cooldown.
   useEffect(() => {
     if (cooldown <= 0) return;
     const deadline = Date.now() + cooldown * 1000;
@@ -394,11 +343,9 @@ export function AccountModal({
       if (left <= 0) clearInterval(timer);
     }, 250);
     return () => clearInterval(timer);
-    // Restarted only when a new cooldown is issued.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cooldown === 0]);
 
-  /** Step one: mail a code to the address on the account. */
   const sendCode = useCallback(async () => {
     if (!profile || pwBusy || cooldown > 0) return;
     setPwBusy(true);
@@ -412,13 +359,11 @@ export function AccountModal({
     } catch (err) {
       setPwError(err instanceof AuthError ? err.message : t('account.pwSendError'));
     } finally {
-      // Single-use token: spent by the attempt whatever the outcome.
       turnstileRef.current?.reset();
       setPwBusy(false);
     }
   }, [profile, pwBusy, cooldown, turnstileToken, t]);
 
-  /** Step two: spend the code and set the new password. */
   const submitPasswordChange = useCallback(
     async (event: React.FormEvent) => {
       event.preventDefault();
@@ -445,8 +390,6 @@ export function AccountModal({
           code,
           newPassword,
         });
-        // Back to the overview with a confirmation, rather than leaving the
-        // player on a form whose fields are now meaningless.
         resetPasswordView();
         setPwNotice(t('account.pwChanged'));
       } catch (err) {
@@ -472,8 +415,6 @@ export function AccountModal({
 
   if (!open || !isMounted) return null;
 
-  // The live ledger figure wins; the profile's copy is the fallback for the
-  // moment before the socket has pushed a balance frame.
   const balanceText = balance.hasSynced
     ? `${balance.formatted} ${balance.currency}`
     : profile
@@ -516,7 +457,6 @@ export function AccountModal({
           </button>
         </div>
 
-        {/* ── Change password ── */}
         {view === 'password' && profile && (
           <>
             <button type="button" className="acc__back" onClick={resetPasswordView}>
@@ -544,8 +484,6 @@ export function AccountModal({
               </p>
             )}
 
-            {/* The address is the account's own — not a field, so a code can
-                never be aimed anywhere but the inbox that owns the account. */}
             <div className="acc__pw-email">
               <b title={profile.email}>{profile.email}</b>
               <span>{t('account.pwEmailNote')}</span>
@@ -581,8 +519,6 @@ export function AccountModal({
                   idPrefix="account-pw"
                   digits={digits}
                   onDigitsChange={setDigits}
-                  // The form carries two more fields, so a complete code moves
-                  // focus on rather than submitting against an empty password.
                   onComplete={() =>
                     document.getElementById('account-new-password')?.focus()
                   }
@@ -688,9 +624,6 @@ export function AccountModal({
               />
               <div className="acc__ident-main">
                 <div className="acc__ident-name">Frigat</div>
-                {/* The account is still named here. The strip identifies which
-                    login you are in, so dropping the address for the brand
-                    would leave two signed-in accounts looking identical. */}
                 <div className="acc__ident-meta" title={profile.email}>
                   {profile.email} · {t('account.memberSince')}{' '}
                   {formatJoined(profile.createdAt, locale)}
@@ -754,9 +687,6 @@ export function AccountModal({
                   <span className="acc__key">{t('account.sessionStatus')}</span>
                   <span className="acc__val">{t('account.sessionActive')}</span>
                 </div>
-                {/* Only the *hashed* server seed and the nonce ever reach the
-                    client — revealing a live server seed would let the holder
-                    predict every future round on the pair. */}
                 {seed && (
                   <div className="acc__row">
                     <span className="acc__key">{t('account.seedNonce')}</span>

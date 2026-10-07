@@ -33,8 +33,6 @@ export default function KenoPage() {
 
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // autoSettle is off: the tiles reveal one at a time, and the round is not
-  // over until the last one turns.
   const { busy, bet, settle } = useGameRound<{
     drawn?: number[];
     hitCount?: number;
@@ -54,9 +52,6 @@ export default function KenoPage() {
       setWon(null);
       setSettledPickCount(resultPickCount);
 
-      // Nothing to reveal means no timer will ever fire, and the last timer is
-      // what ends the round — so without this the board stays locked until the
-      // player reloads. Plinko already guarded its equivalent empty-path case.
       if (drawnNumbers.length === 0) {
         setHitCount(0);
         setWon(win);
@@ -80,8 +75,6 @@ export default function KenoPage() {
     },
   });
 
-  // The reveal timers are owned by this page, so unmounting mid-reveal has to
-  // clear them — useGameRound only owns the subscription.
   useEffect(
     () => () => {
       timersRef.current.forEach(clearTimeout);

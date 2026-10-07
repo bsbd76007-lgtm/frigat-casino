@@ -25,7 +25,6 @@ import {
 const THEME = TABLES.limbo;
 
 export interface LimboRound {
-  /** Changes per round; a new id is what starts the count-up. */
   id: string;
   achievedMultiplier: number;
   win: boolean;
@@ -33,9 +32,7 @@ export interface LimboRound {
 
 export interface LimboCanvasProps {
   target: number;
-  /** Null between rounds. Set once the server has settled the round. */
   round: LimboRound | null;
-  /** Called when the count-up finishes — the page settles the round there. */
   onRollComplete?: () => void;
   height?: number;
   className?: string;
@@ -43,14 +40,6 @@ export interface LimboCanvasProps {
 
 const ROLLOUT_MS = 850;
 
-/**
- * Flat: a big count-up and a bar racing a target line.
- *
- * The count-up is the whole game, so it gets the whole board. The bar is on a
- * log scale because that is the only scale on which 2x and 200x can share a
- * track, and it is pinned to the target — reaching the line is the win
- * condition, drawn literally.
- */
 export function LimboCanvas({
   target,
   round,
@@ -76,8 +65,6 @@ export function LimboCanvas({
   const draw = useMemo(
     () =>
       ({ ctx, width, height: h }: CanvasFrame) => {
-        // The board paints its own surface so its plate and bar can be raised
-        // out of it and pressed into it.
         ctx.fillStyle = THEME.surface;
         ctx.fillRect(0, 0, width, h);
 
@@ -87,8 +74,6 @@ export function LimboCanvas({
         let value = 1;
         if (run) {
           const t = reducedMotion ? 1 : Math.min(1, (performance.now() - run.startedAt) / ROLLOUT_MS);
-          // Cubic ease-out in log space: the climb through the small multipliers
-          // is quick and the last stretch is where the tension is.
           const eased = 1 - Math.pow(1 - t, 3);
           value = Math.exp(Math.log(Math.max(achieved, 1.0001)) * eased);
           if (t >= 1 && !run.done) {
@@ -101,7 +86,6 @@ export function LimboCanvas({
         const win = settled ? round?.win === true : null;
         const tint = win === null ? BOARD.text : win ? POS : NEG;
 
-        // The readout, on a plate raised out of the surface.
         const readoutY = h * 0.4;
         const size = Math.min(72, width * 0.17);
         const plateW = Math.min(width - 32, size * 5.2);
@@ -123,7 +107,6 @@ export function LimboCanvas({
           ctx.fillText(win ? 'TARGET CLEARED' : 'BELOW TARGET', width / 2, readoutY + size * 0.72);
         }
 
-        // The bar: how far the roll got toward the target, on a log scale.
         const pad = Math.min(width * 0.1, 52);
         const left = pad;
         const span = width - pad * 2;
@@ -132,7 +115,6 @@ export function LimboCanvas({
         const logTarget = Math.log(Math.max(target, 1.0001));
         const progress = Math.min(1.12, Math.log(Math.max(value, 1)) / logTarget);
 
-        // A groove pressed into the surface.
         const bar = roundRectPath(left, barY, span, barH, barH / 2);
         neuInset(ctx, bar, shade(THEME.surface, -0.18), 0.5);
 
@@ -144,8 +126,6 @@ export function LimboCanvas({
           ctx.restore();
         }
 
-        // The target line sits at the bar's own 100% mark: the fill either
-        // reaches it or stalls short, which is the result in one glance.
         const targetX = left + span;
         ctx.strokeStyle = GOLD;
         ctx.lineWidth = 2;

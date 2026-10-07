@@ -1,14 +1,3 @@
-/**
- * FRIGAT — Admin user & ledger routes
- *
- * All ADMIN-gated. Every mutating route writes an AdminAuditLog entry naming
- * the acting admin, the target, and the reason — an operator console that can
- * move money without leaving a trail is not auditable.
- *
- * Money is returned as Decimal strings throughout; the browser formats it
- * digit-wise and never parses it into a float.
- */
-
 import type { FastifyInstance } from 'fastify';
 import { Prisma, Role, TransactionType, TransactionStatus } from '@prisma/client';
 import { prisma } from '../../config/prisma';
@@ -40,8 +29,6 @@ export function registerAdminUserRoutes(app: FastifyInstance) {
       const take = clampTake(req.query.take);
       const skip = Math.max(0, Number(req.query.skip) || 0);
 
-      // `mode: 'insensitive'` keeps this a parameterised query — never string
-      // interpolation into SQL.
       const where: Prisma.UserWhereInput = {
         ...(q
           ? {
@@ -171,8 +158,6 @@ export function registerAdminUserRoutes(app: FastifyInstance) {
       if (!target) return reply.code(404).send({ error: 'not_found' });
 
       try {
-        // The audit entry is written inside adjustBalance's transaction, so a
-        // failure here rolls the money back rather than leaving it unrecorded.
         return await adjustBalance({
           userId: req.params.id,
           amount,
@@ -257,9 +242,6 @@ export function registerAdminUserRoutes(app: FastifyInstance) {
       }
 
       const pct = new Prisma.Decimal(revSharePercentage);
-      // Above 100 the platform pays out more than the downline actually lost,
-      // turning every losing bet into a net loss for the house. The column is
-      // Decimal(5,2) and would happily store 999.99, so the ceiling is here.
       if (pct.lessThan(0) || pct.greaterThan(100)) {
         return reply.code(400).send({ error: 'revSharePercentage must be between 0 and 100' });
       }
@@ -303,7 +285,6 @@ export function registerAdminUserRoutes(app: FastifyInstance) {
     }
   );
 
-  // ── Freeze / unfreeze ──────────────────────
   app.post<{ Params: { id: string }; Body: { frozen?: boolean; reason?: string } }>(
     '/api/admin/users/:id/freeze',
     { preHandler: requireAdmin },

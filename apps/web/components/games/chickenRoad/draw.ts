@@ -1,24 +1,3 @@
-/**
- * Chicken Road — canvas drawing.
- *
- * Pure rendering: every function here takes a context, a `View` (the camera,
- * see view.ts) and world coordinates, and draws. None of them decide anything
- * about the round, which is what keeps the outcome logic in one place and this
- * file safe to tune by eye.
- *
- * The scene is pseudo-3D: the road is a plane seen in perspective, cars and
- * barriers are extruded boxes standing on it, and every object casts a shadow
- * from the one point light in `view.ts`. Faces are shaded by which way they
- * point relative to that light, so the lighting and the shadows agree.
- *
- * The art is pixel art, which constrains how all of that is painted. Colours
- * come from the fixed palette in `pixel.ts` and depth is carried by *steps*
- * along a ramp rather than by a gradient: a canvas gradient resolved into the
- * board's quarter-size buffer comes back as banding noise, so the bands are
- * drawn deliberately instead of falling out of a quantised ramp. Edges snap to
- * the art grid so nothing shimmers as it moves. See `pixel.ts`.
- */
-
 import type { KeyedSprite } from '@/lib/spriteMask';
 
 import type { View } from './view';
@@ -30,7 +9,6 @@ import {
   drawSprite,
   px,
   pxQuad,
-  snap,
   type CarPalette,
 } from './pixel';
 
@@ -38,45 +16,12 @@ export function randomCarColour(): CarColour {
   return CAR_COLOURS[Math.floor(Math.random() * CAR_COLOURS.length)] ?? CAR_COLOURS[0];
 }
 
-// ─────────────────────────────────────────────
-// Sizes and palette
-// ─────────────────────────────────────────────
-
-/**
- * Both grids are sized in abstract units and scaled at draw time. The car's
- * `len` runs *along* its lane and `width` across it; `body` and `cabin` are its
- * heights, so a car is a box on a box.
- */
 export const CAR_UNITS = { len: 8, width: 5, body: 2.1, cabin: 1.7 } as const;
 export const CHICKEN_UNITS = { w: 8, h: 7 } as const;
 
-/**
- * Liveries, straight from the pixel palette. Four flat steps each — the lit
- * roof, the shell, the shaded flank and the dark trim — so a car needs no
- * computed shading at draw time and resolves to exactly four colours.
- *
- * `shade()` is gone from the car path with them: a continuously lightened or
- * darkened fill is a fifth, sixth and seventh colour that the palette never
- * agreed to, and at this size it read as noise along the panel edges.
- */
 export const CAR_COLOURS = CAR_PALETTES;
 
 export type CarColour = CarPalette;
-
-/** Lightens (f > 0) or darkens (f < 0) a #rrggbb colour. */
-function shade(hex: string, f: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const mix = (c: number) =>
-    Math.round(f >= 0 ? c + (255 - c) * f : c * (1 + f));
-  const r = mix((n >> 16) & 255);
-  const g = mix((n >> 8) & 255);
-  const b = mix(n & 255);
-  return `rgb(${r},${g},${b})`;
-}
-
-// ─────────────────────────────────────────────
-// Primitives
-// ─────────────────────────────────────────────
 
 type Pt = { x: number; y: number };
 
@@ -89,7 +34,6 @@ function poly(ctx: CanvasRenderingContext2D, pts: readonly Pt[], fill: string | 
   ctx.fill();
 }
 
-/** Convex hull (monotone chain) — the outline of a shadow from its corners. */
 function hull(points: Array<{ u: number; t: number }>): Array<{ u: number; t: number }> {
   const pts = [...points].sort((a, b) => a.u - b.u || a.t - b.t);
   const cross = (o: typeof pts[0], a: typeof pts[0], b: typeof pts[0]) =>
@@ -116,11 +60,6 @@ interface Box {
   h1: number;
 }
 
-/**
- * Ground shadow of a box: the hull of its footprint and of its top face cast
- * through the light. Two passes — a wide faint one and the core — stand in for
- * a soft edge without a blur filter, which not every canvas supports.
- */
 export function drawBoxShadow(ctx: CanvasRenderingContext2D, v: View, b: Box, strength = 1) {
   const corners: Array<{ u: number; t: number }> = [];
   for (const u of [b.u0, b.u1]) {
@@ -132,19 +71,12 @@ export function drawBoxShadow(ctx: CanvasRenderingContext2D, v: View, b: Box, st
   const outline = hull(corners);
   const cu = outline.reduce((s, p) => s + p.u, 0) / outline.length;
   const ct = outline.reduce((s, p) => s + p.t, 0) / outline.length;
-  /** The outline scaled about its centre — the faint pass is a size up. */
   const grow = (k: number) =>
     outline.map((p) => v.project(cu + (p.u - cu) * k, ct + (p.t - ct) * k));
   poly(ctx, grow(1.1), `rgba(10,14,22,${0.1 * strength})`);
   poly(ctx, grow(0.96), `rgba(10,14,22,${0.22 * strength})`);
 }
 
-/**
- * An extruded box. Only faces turned toward the camera are drawn — the top,
- * the near face, and whichever flank faces the vanishing line — in back-to-front
- * order, so no depth buffer is needed. `left` is the lit flank: the light is out
- * to the left of the road.
- */
 function drawBox(
   ctx: CanvasRenderingContext2D,
   v: View,
@@ -162,20 +94,12 @@ function drawBox(
   poly(ctx, [P(b.u0, b.t0, b.h1), P(b.u1, b.t0, b.h1), P(b.u1, b.t1, b.h1), P(b.u0, b.t1, b.h1)], colours.top);
 }
 
-/** Overpass geometry, in lane widths: the clearance under the deck and its thickness. */
 const OVERPASS = { depth: 0.07, clearance: 0.62, deck: 0.2 } as const;
 
-/** Screen y of the underside of the overpass deck — cars are clipped below it. */
 export function overpassClipY(v: View, tunnelY: number): number {
   return v.project(0, tunnelY, v.laneW * OVERPASS.clearance).y;
 }
 
-/**
- * The overpass that hides the traffic. `mouth` paints the dark opening on the
- * road (drawn on the ground layer, before any car); `deck` paints the concrete
- * span over it (drawn in depth order, so barriers in front still overlap it).
- * Flat colours only.
- */
 export function drawOverpass(
   ctx: CanvasRenderingContext2D,
   v: View,
@@ -190,7 +114,6 @@ export function drawOverpass(
   const P = (u: number, t: number, h: number) => v.project(u, t, h);
 
   if (part === 'mouth') {
-    // Everything under the deck, from the far side down to the opening.
     poly(
       ctx,
       [P(-span, t0, 0), P(span, t0, 0), P(span, t1, 0), P(span, t1, h0), P(-span, t1, h0), P(-span, t1, 0)],
@@ -206,7 +129,6 @@ export function drawOverpass(
     left: PAL.kerbFace,
     right: PAL.kerbDark,
   });
-  // A painted stripe along the face, and a rail on top.
   poly(
     ctx,
     [P(-span, t1, h0 + (h1 - h0) * 0.42), P(span, t1, h0 + (h1 - h0) * 0.42), P(span, t1, h0 + (h1 - h0) * 0.58), P(-span, t1, h0 + (h1 - h0) * 0.58)],
@@ -219,7 +141,6 @@ export function drawOverpass(
   );
 }
 
-/** A quad lying on one face of a box, inset by fractions — windows, lamps. */
 function faceQuad(
   ctx: CanvasRenderingContext2D,
   v: View,
@@ -241,11 +162,6 @@ function faceQuad(
   poly(ctx, [v.project(uu, t(a0), h(z0)), v.project(uu, t(a1), h(z0)), v.project(uu, t(a1), h(z1)), v.project(uu, t(a0), h(z1))], fill);
 }
 
-// ─────────────────────────────────────────────
-// Cars
-// ─────────────────────────────────────────────
-
-/** A car's two boxes, from its lane centre `u`, row `t` and sprite scale. */
 export function carBoxes(u: number, t: number, scale: number, depthPx: number) {
   const halfW = (CAR_UNITS.width * scale) / 2;
   const halfL = (CAR_UNITS.len * scale) / depthPx / 2;
@@ -267,10 +183,6 @@ export function drawCarShadow(ctx: CanvasRenderingContext2D, v: View, u: number,
   drawBoxShadow(ctx, v, { ...body, h1: cabin.h1 * 0.92 }, 0.8);
 }
 
-/**
- * A car driving down its lane toward the camera: a body box on four wheels,
- * a glasshouse set back on top, lamps on the nose.
- */
 export function drawCar3D(
   ctx: CanvasRenderingContext2D,
   v: View,
@@ -281,8 +193,6 @@ export function drawCar3D(
 ) {
   const { body, cabin } = carBoxes(u, t, scale, v.depthPx);
 
-  // Wheels first: four dark blocks under the body, only their outer faces and
-  // the front pair's tread ever show.
   const wheelW = scale * 0.75;
   const wheelL = (scale * 1.6) / v.depthPx;
   for (const wt of [body.t0 + (body.t1 - body.t0) * 0.2, body.t1 - (body.t1 - body.t0) * 0.2]) {
@@ -303,17 +213,11 @@ export function drawCar3D(
     right: colour.side,
   });
 
-  // Nose: grille band, then the two headlamps either side of it. Flat opaque
-  // colours rather than translucent ones — an alpha fill over a banded road
-  // takes its colour from whichever band it lands on, so the same lamp came
-  // out a different shade at each end of the lane.
   faceQuad(ctx, v, 'front', body, [0.3, 0.7], [0.18, 0.5], PAL.night);
   for (const [a0, a1] of [[0.06, 0.26], [0.74, 0.94]] as const) {
     faceQuad(ctx, v, 'front', body, [a0, a1], [0.38, 0.72], '#fff4c2');
   }
-  // Bumper, a darker strip along the bottom of the nose.
   faceQuad(ctx, v, 'front', body, [0, 1], [0, 0.16], colour.dark);
-  // Door line down the visible flank.
   for (const face of ['left', 'right'] as const) {
     faceQuad(ctx, v, face, body, [0.46, 0.48], [0.15, 0.95], colour.dark);
   }
@@ -324,38 +228,23 @@ export function drawCar3D(
     left: colour.shell,
     right: colour.side,
   });
-  // Glass: windscreen across the near face, side windows along the flanks.
-  // Two fixed blues from the palette, not alpha over the livery.
   faceQuad(ctx, v, 'front', cabin, [0.08, 0.92], [0.08, 0.88], '#8fb6dc');
   for (const face of ['left', 'right'] as const) {
     faceQuad(ctx, v, face, cabin, [0.12, 0.88], [0.15, 0.85], '#2a3b57');
   }
-  // No roof glint. A translucent triangle across the top face is a soft edge
-  // on a board that has none, and it broke the car's four-colour budget.
 }
 
-// ─────────────────────────────────────────────
-// Road
-// ─────────────────────────────────────────────
-
 export interface RoadSpec {
-  /** First lane of asphalt; lane 0 is the grass verge the chicken starts on. */
   firstLane: number;
-  /** Last lane of the road; the finish verge begins after it. */
   lastLane: number;
 }
 
-/** Ground, asphalt, kerb, lane markings and the finish strip. */
 export function drawRoad(ctx: CanvasRenderingContext2D, v: View, road: RoadSpec) {
-  const { width, height } = v;
+  const { width } = v;
 
-  // ── Sky over the far end — one flat colour ──
   const skyFoot = v.project(0, 0).y;
   px(ctx, 0, 0, width, skyFoot + 2, PAL.skyMid);
 
-  // ── Grass — one flat colour under the whole stage; the road is laid over it.
-  // Drawn as a quad in world space so its far edge meets the sky along the
-  // road's own horizon.
   const spread = width * 4;
   pxQuad(
     ctx,
@@ -368,8 +257,6 @@ export function drawRoad(ctx: CanvasRenderingContext2D, v: View, road: RoadSpec)
   const far = -0.15;
   const near = 1.2;
 
-  // ── Asphalt — one flat colour, every other lane one shade off so the lanes
-  // stay countable at the far end where the dashes thin out.
   pxQuad(
     ctx,
     [v.project(roadL, far), v.project(roadR, far), v.project(roadR, near), v.project(roadL, near)],
@@ -385,7 +272,6 @@ export function drawRoad(ctx: CanvasRenderingContext2D, v: View, road: RoadSpec)
     );
   }
 
-  // Lane dividers: dashes laid on the asphalt, so they foreshorten with it.
   const lineW = Math.max(2, v.laneW * 0.022);
   for (let lane = road.firstLane + 1; lane <= road.lastLane; lane += 1) {
     const u = v.laneLeft(lane);
@@ -399,8 +285,6 @@ export function drawRoad(ctx: CanvasRenderingContext2D, v: View, road: RoadSpec)
     }
   }
 
-  // Kerbs: a raised concrete lip along both edges of the asphalt, with the
-  // yellow edge line painted along its top.
   const kerbW = v.laneW * 0.08;
   const kerbH = Math.max(4, v.laneW * 0.05);
   for (const [u0, u1] of [[roadL - kerbW, roadL], [roadR, roadR + kerbW]] as const) {
@@ -418,7 +302,6 @@ export function drawRoad(ctx: CanvasRenderingContext2D, v: View, road: RoadSpec)
     );
   }
 
-  // Finish strip on the far verge: a chequer laid on the grass past the kerb.
   const f0 = roadR + kerbW * 1.6;
   const cellU = v.laneW * 0.16;
   const cellT = 0.06;
@@ -435,25 +318,10 @@ export function drawRoad(ctx: CanvasRenderingContext2D, v: View, road: RoadSpec)
   }
 }
 
-/**
- * Atmosphere — deliberately empty now. The stepped haze bands that used to sit
- * over the far end read as a gradient; the board is flat colour throughout.
- * Kept as a hook so the render order in ChickenRoad.tsx does not change.
- */
 export function drawAtmosphere(_ctx: CanvasRenderingContext2D, _v: View) {}
-
-// ─────────────────────────────────────────────
-// Manhole covers — the multiplier ladder
-// ─────────────────────────────────────────────
 
 export type CoverState = 'ahead' | 'next' | 'stand' | 'cleared';
 
-/**
- * A cast-iron cover set into the asphalt at the chicken's row, carrying the
- * lane's multiplier and the odds of getting there. The disc lies on the road
- * and foreshortens with it; the numbers stand up off it, facing the camera,
- * because text laid flat at this angle would be unreadable.
- */
 export function drawCover(
   ctx: CanvasRenderingContext2D,
   v: View,
@@ -464,22 +332,11 @@ export function drawCover(
   multiplier: string,
   chance: string,
   timeSeconds: number,
-  /** Below the unlock lane: it counts toward the ladder but cannot be banked. */
-  locked = false
+  _locked = false
 ) {
-  /**
-   * A cover is an octagon, not a circle.
-   *
-   * Thirty-six segments resolved into the board's quarter-size buffer produced
-   * a wobbling, half-covered edge that changed shape as the camera panned —
-   * the one place the old board most obviously read as "shrunk" rather than
-   * "drawn". Eight snapped segments land on the grid and hold still, and at
-   * this size an octagon reads as a disc anyway.
-   */
   const ring = (r: number) => {
     const pts: Pt[] = [];
     for (let i = 0; i < 8; i += 1) {
-      // Half a step of rotation puts a flat, not a vertex, at top and bottom.
       const a = ((i + 0.5) / 8) * Math.PI * 2;
       pts.push(v.project(u + Math.cos(a) * r, t + (Math.sin(a) * r) / v.depthPx));
     }
@@ -490,19 +347,14 @@ export function drawCover(
   if (state === 'cleared') ctx.globalAlpha = 0.55;
 
   if (state === 'next') {
-    // The lane in play pulses so the eye finds it without reading. Stepped to
-    // three states rather than eased, so the halo is always a flat colour.
     const step = Math.floor(timeSeconds * 4) % 3;
     pxQuad(ctx, ring(radius * (1.3 + step * 0.06)), PAL.coverLiveRim);
   }
 
-  // Recess, rim and face: three rings, dark to light, for a cast edge.
   pxQuad(ctx, ring(radius * 1.06), PAL.coverDeep);
   pxQuad(ctx, ring(radius), state === 'next' ? PAL.coverLive : PAL.coverRim);
   pxQuad(ctx, ring(radius * 0.8), state === 'cleared' ? PAL.coverDone : PAL.coverFace);
 
-  // Tread: three bars across the face, each a snapped block. The old five
-  // hairlines at 8% white were under one art pixel wide and vanished.
   const barW = radius * 0.1;
   const barT = (radius * 0.5) / v.depthPx;
   for (let i = -1; i <= 1; i += 1) {
@@ -519,20 +371,9 @@ export function drawCover(
     );
   }
 
-  // No bolt heads. Eight sub-pixel discs around the rim cost eight arcs a
-  // cover per frame and never resolved to more than a speckle of grey.
-
   ctx.restore();
 }
 
-/**
- * A cover's multiplier and win chance.
- *
- * Split out of `drawCover` so it can be drawn in the board's crisp overlay
- * pass. The board renders its world at a quarter resolution for the pixel look,
- * and a 12px label resolved into that buffer comes back as three pixels of
- * mush — the ladder is the one thing on this board a player has to read exactly.
- */
 export function drawCoverLabels(
   ctx: CanvasRenderingContext2D,
   v: View,
@@ -544,7 +385,6 @@ export function drawCoverLabels(
   chance: string,
   locked = false
 ) {
-  // The chicken stands on its own cover and hides it; everything else labels.
   if (state === 'stand') return;
 
   ctx.save();
@@ -577,15 +417,6 @@ export function drawCoverLabels(
   ctx.restore();
 }
 
-// ─────────────────────────────────────────────
-// Barriers
-// ─────────────────────────────────────────────
-
-/**
- * A boom barrier at the kerb end of a lane. `closed` runs 0 (arm straight up)
- * to 1 (arm down across the lane, holding its traffic). The post and the arm
- * both cast shadows, so the arm's shadow sweeps across the asphalt as it drops.
- */
 export function barrierGeometry(v: View, lane: number, t: number, closed: number) {
   const post = { u: v.laneLeft(lane) + v.laneW * 0.06, w: v.laneW * 0.07, h: v.laneW * 0.34 };
   const pivotH = post.h * 0.86;
@@ -621,10 +452,6 @@ export function drawBarrier(ctx: CanvasRenderingContext2D, v: View, lane: number
     right: PAL.kerbDark,
   });
 
-  // The arm: red and white bands along its length. Drawn as snapped quads
-  // rather than as a stroked line — a stroke is centred on its path and lands
-  // on half-pixels at both ends, which left every band with a soft edge and a
-  // different apparent width depending on where the arm had swung to.
   const width = Math.max(PIXEL_SIZE, v.laneW * 0.05 * v.scale(t));
   const bands = 7;
   for (let i = 0; i < bands; i += 1) {
@@ -636,8 +463,6 @@ export function drawBarrier(ctx: CanvasRenderingContext2D, v: View, lane: number
     });
     const a = at(f0);
     const b = at(f1);
-    // Give the band thickness across the arm by offsetting in height, which is
-    // the axis the arm is thin on whichever way it has swung.
     const half = (width / 2) / v.scale(t);
     pxQuad(
       ctx,
@@ -650,22 +475,12 @@ export function drawBarrier(ctx: CanvasRenderingContext2D, v: View, lane: number
       i % 2 === 0 ? PAL.comb : PAL.paint
     );
   }
-  // Lamp on the tip, lit once the arm is down. A snapped block, not an arc.
   if (closed > 0.95) {
     const tip = v.project(g.tip.u, t, g.tip.h);
     px(ctx, tip.x - width * 0.6, tip.y - width * 0.6, width * 1.2, width * 1.2, PAL.coverLiveRim);
   }
 }
 
-// ─────────────────────────────────────────────
-// Chicken
-// ─────────────────────────────────────────────
-
-/**
- * The chicken's shadow: an ellipse under its feet, cast away from the light
- * and stretched as the hop lifts it — the one cue that tells a jump apart
- * from a slide.
- */
 export function drawChickenShadow(
   ctx: CanvasRenderingContext2D,
   v: View,
@@ -714,33 +529,10 @@ export function roundedRect(
   ctx.closePath();
 }
 
-/**
- * Which renderer draws the player.
- *
- * `vector` is the default because it is simply the higher-quality of the two.
- * The image path loads `/chicken.modal.jpg`, whose transparency was flattened
- * into an opaque checkerboard when it was saved as JPEG; `spriteMask.ts` keys
- * that back out at load, but the bird is white against a white-and-grey
- * background and the recovered silhouette keeps a small ragged bite near the
- * left cheek. The vector rooster has real transparency, no artefacts, and stays
- * crisp at any device pixel ratio instead of being downscaled from 617px.
- *
- * Switch to `'image'` to go back to the photographic sprite — both paths size
- * from the same box, so nothing else changes.
- */
 export const CHICKEN_RENDERER: 'vector' | 'image' = 'vector';
 
-/** Where the image renderer sources the player. Keyed at load — see `spriteMask.ts`. */
 export const CHICKEN_SPRITE_SRC = '/chicken.modal.jpg';
 
-/**
- * Draws the chicken sprite centred on (cx, cy), scaled to `boxH` tall.
- *
- * The source is cropped to the silhouette before it gets here, so centring the
- * image *is* centring the bird. Width follows from the sprite's own aspect
- * ratio rather than the lane box, which is what keeps it from being stretched
- * as lane width and stage height change independently.
- */
 export function drawChickenSprite(
   ctx: CanvasRenderingContext2D,
   sprite: KeyedSprite,
@@ -754,16 +546,6 @@ export function drawChickenSprite(
   ctx.drawImage(sprite.canvas, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
 }
 
-/**
- * The rooster drawn as smooth vector shapes — no pixel grid, no image. Facing
- * right, the direction it crosses in. Centred on (cx, cy) in a box `boxH` tall
- * with its feet 0.45 of the box below the centre, the same anchor the pixel
- * versions used, so the hop, the shadow and the tap target all line up.
- *
- * The silhouette (tail, body, head) is drawn twice: once with a thick dark
- * stroke as the outline, then filled on top, so the joins between the shapes
- * vanish and only the outer edge keeps its line. Flat colours throughout.
- */
 export function drawChickenSmooth(
   ctx: CanvasRenderingContext2D,
   cx: number,
@@ -794,7 +576,6 @@ export function drawChickenSmooth(
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
 
-  // ── Legs and feet ──
   const footY = cy + u * 0.45;
   ctx.strokeStyle = ORANGE;
   ctx.lineWidth = Math.max(1.5, u * 0.045);
@@ -808,7 +589,6 @@ export function drawChickenSmooth(
     ctx.stroke();
   }
 
-  // ── Silhouette: outline pass, then fill pass ──
   const tail = () => ellipse(cx - u * 0.3, y - u * 0.1, u * 0.14, u * 0.2, -0.5);
   const body = () => ellipse(cx - u * 0.02, y + u * 0.02, u * 0.33, u * 0.25);
   const head = () => circle(cx + u * 0.2, y - u * 0.24, u * 0.16);
@@ -824,12 +604,10 @@ export function drawChickenSmooth(
     ctx.fill();
   }
 
-  // Belly shade, low on the body — a second flat colour, not a gradient.
   ellipse(cx - u * 0.02, y + u * 0.13, u * 0.24, u * 0.1);
   ctx.fillStyle = SHADE;
   ctx.fill();
 
-  // ── Wing, with a little flap ──
   ellipse(cx - u * 0.06, y + u * 0.02, u * 0.17, u * 0.11, -0.25 + flap);
   ctx.fillStyle = SHADE;
   ctx.fill();
@@ -837,7 +615,6 @@ export function drawChickenSmooth(
   ctx.lineWidth = Math.max(1, u * 0.025);
   ctx.stroke();
 
-  // ── Comb and wattle ──
   ctx.fillStyle = RED;
   for (const [dx, dy, r] of [[0.12, -0.39, 0.055], [0.2, -0.43, 0.065], [0.28, -0.38, 0.05]] as const) {
     circle(cx + dx * u, y + dy * u, r * u);
@@ -846,7 +623,6 @@ export function drawChickenSmooth(
   ellipse(cx + u * 0.32, y - u * 0.13, u * 0.04, u * 0.06);
   ctx.fill();
 
-  // ── Beak ──
   ctx.beginPath();
   ctx.moveTo(cx + u * 0.33, y - u * 0.28);
   ctx.lineTo(cx + u * 0.47, y - u * 0.22);
@@ -855,7 +631,6 @@ export function drawChickenSmooth(
   ctx.fillStyle = ORANGE;
   ctx.fill();
 
-  // ── Eye with a highlight ──
   circle(cx + u * 0.24, y - u * 0.27, u * 0.035);
   ctx.fillStyle = OUTLINE;
   ctx.fill();
@@ -866,19 +641,6 @@ export function drawChickenSmooth(
   ctx.restore();
 }
 
-/**
- * The rooster, facing right — the direction it crosses in.
- *
- * Drawn from the pixel matrices in `pixel.ts` rather than from paths. The board
- * resolves its world into a buffer a quarter of the stage's size, and the bird
- * is the smallest thing on it that has to stay readable: as layered curves,
- * gradients and round-capped strokes it came back through that downscale as a
- * white blob with no beak and no comb. A matrix places every feature at a size
- * that survives, because the size *is* what was authored.
- *
- * `cy` is the centre of the collision box, as before — the sprite is blitted
- * from its feet, so the conversion happens here and callers are unchanged.
- */
 export function drawChicken(
   ctx: CanvasRenderingContext2D,
   cx: number,
@@ -886,10 +648,6 @@ export function drawChicken(
   boxH: number,
   timeSeconds: number
 ) {
-  // Two-frame cycle. The old bob eased continuously about the feet; a pixel
-  // bird steps between frames instead, which also keeps the sprite on whole
-  // rows — an eased translate puts it back on fractional ones and the outline
-  // shimmers as it moves.
   const frame = chickenFrame(timeSeconds);
   const footY = cy + boxH * 0.5;
   drawSprite(ctx, frame, cx, footY, boxH);

@@ -1,27 +1,7 @@
-/**
- * The boards' palette and type, mirrored from the design tokens.
- *
- * A 2D context cannot read a custom property — `ctx.fillStyle = 'var(--fg-bg)'`
- * is silently ignored and paints black — so the tokens a board needs are
- * duplicated here as literals. This file is the one place that duplication is
- * allowed to live: if `app/globals.css` moves a token, change it here too.
- *
- * The accent contract from globals.css holds on canvas as well. `ACCENT` is for
- * strokes, glows and small marks; anything that carries white text is filled
- * with `ACCENT_DEEP` or `ACCENT_MID`. `GOLD` is not a second accent — it means
- * reward, so it only ever paints a win.
- */
-
 export const BOARD = {
-  /** The stage and the floor share one surface — the neumorphic contract: depth
-   *  comes from paired soft shadows, not from the floor being darker. Lifted
-   *  well off black, or the light half of the shadow pair has nothing to show
-   *  against. Matches --neu-surface in globals.css. */
   bg: '#1b1f28',
-  /** The board's own floor, lit and unlit. */
   floor: '#1b1f28',
   floorDeep: '#171a22',
-  /** Solids that have no state yet: an unrevealed tile, an idle peg. */
   neutral: '#232834',
   neutralLit: '#2c3240',
   line: '#252a35',
@@ -31,24 +11,12 @@ export const BOARD = {
   dim: '#6a6a76',
 } as const;
 
-/**
- * The soft-shadow pair every raised solid casts. The light half goes up-left
- * and the dark half down-right, matching `faces()`, whose lit flank is the left.
- */
 export const NEU = {
   dark: 'rgba(5,7,12,.62)',
   light: 'rgba(255,255,255,.075)',
-  /** Offset in CSS pixels; blur is a multiple of it. */
   offset: 4,
 } as const;
 
-/**
- * One signature hue per board, taken from the game's poster. Kept to a
- * whisper: it tints the surface and the idle solids and draws the lines, while
- * win, loss and gold keep their meanings unchanged. `surface` is BOARD.bg
- * pulled a few percent toward the hue; `idle` is the colour of a solid that
- * has no state yet.
- */
 export interface TableTheme {
   hue: string;
   surface: string;
@@ -84,19 +52,12 @@ export const POS = '#4e9e7a';
 export const POS_SOFT = '#86bda6';
 export const NEG = '#c25560';
 
-/**
- * The three families from globals.css. Self-hosted, so a family name is all a
- * context needs — and because the boards redraw on every frame, a face that is
- * still loading on the first frame is picked up by a later one.
- */
 export const FONT = {
   display: "'Unbounded', 'Manrope', ui-sans-serif, system-ui, sans-serif",
   body: "'Manrope', ui-sans-serif, system-ui, -apple-system, sans-serif",
-  /** Anything that ticks or is compared down a column. */
   num: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
 } as const;
 
-/** The colour a multiplier is worth — shared so every board grades alike. */
 export function multiplierColour(multiplier: number): string {
   if (!Number.isFinite(multiplier) || multiplier <= 0) return NEG;
   if (multiplier < 1) return '#8a6a4f';

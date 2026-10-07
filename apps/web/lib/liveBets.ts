@@ -23,12 +23,6 @@ export interface BetDetail extends LiveBet {
   fairness: BetFairness;
 }
 
-/**
- * Net result of a round: payout − stake, as an exact decimal string.
- *
- * Money never goes through a float here. `toUnits` puts both sides on the same
- * 8-dp integer scale, so the subtraction is exact for any size of bet.
- */
 export function betProfit(bet: Pick<LiveBet, 'betAmount' | 'payout'>): string {
   return fromUnits(toUnits(bet.payout) - toUnits(bet.betAmount));
 }
@@ -47,10 +41,6 @@ export function formatUsd(amount: string, locale?: string): string {
   return `$${formatDecimalString(amount.replace(/^-/, ''), 2, locale)}`;
 }
 
-/**
- * `2,00×` in ru — the reference uses a comma decimal, which is just the
- * locale's own separator, so this defers to Intl rather than hardcoding it.
- */
 export function formatMultiplier(multiplier: number, locale?: string): string {
   return `${new Intl.NumberFormat(locale, {
     minimumFractionDigits: 2,

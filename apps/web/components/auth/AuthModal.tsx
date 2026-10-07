@@ -1,26 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Sign in / register / reset, in a dialog.
- *
- * The header's account control opens this when nobody is signed in, so a player
- * can get in without losing the page they were on.
- *
- * It calls the *same* `authClient` functions the /login and /forgot-password
- * pages do, so the rules those pages enforce hold here too — notably the
- * emailed second factor after a password. Nothing is reimplemented: a shortcut
- * auth path that skipped a step would be a way in that the real pages refuse.
- *
- * The Turnstile widget was removed from this dialog by request. The endpoints
- * behind it still accept a token and, in production with a configured secret,
- * still *require* one — see the note in the summary. Nothing else about the
- * flow changed.
- *
- * Registration deliberately hands off to /register once the code is sent: that
- * page owns the password-rules checklist, and duplicating it in a dialog is how
- * the two drift apart.
- */
-
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
@@ -45,6 +24,7 @@ import { evaluatePassword } from '@/app/(auth)/passwordRules';
 import { PasswordChecklist } from '@/app/(auth)/PasswordChecklist';
 import { useInjectedStyles } from '@/lib/useInjectedStyles';
 import { useLanguage } from '@/components/providers/LanguageProvider';
+import { PasswordInput } from '@/components/auth/PasswordInput';
 
 type View = 'signin' | 'code' | 'totp' | 'forgot' | 'reset';
 
@@ -79,7 +59,7 @@ const CSS = `
 .authm__input:focus-visible { border-color: var(--fg-accent);
   box-shadow: var(--fg-input-inset), var(--fg-ring); }
 .authm__submit { width: 100%; padding: 8px; font: inherit; font-size: 14px;
-  font-weight: 800; color: var(--fg-bg); background: var(--fg-accent);
+  font-weight: 800; color: var(--fg-on-accent); background: var(--fg-accent-deep);
   border: 0; border-radius: var(--fg-r-lg); cursor: pointer; }
 .authm__submit:disabled { opacity: .45; cursor: not-allowed; }
 .authm__submit:focus-visible { outline: none; box-shadow: var(--fg-ring); }
@@ -116,7 +96,6 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
-  /** The ticket for the authenticator step, when the account has one. */
   const [totpChallenge, setTotpChallenge] = useState<string | null>(null);
   const [totpCode, setTotpCode] = useState('');
 
@@ -127,8 +106,6 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
 
   useEffect(() => setMounted(true), []);
 
-  // A dialog that keeps a half-typed password across openings is a dialog that
-  // leaks one; everything resets on close.
   useEffect(() => {
     if (open) return;
     setView('signin');
@@ -143,7 +120,6 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
     setNotice(null);
   }, [open]);
 
-  /** Both earlier steps can end here: the credentials were right, 2FA is on. */
   const toTotp = useCallback((err: TotpRequiredError) => {
     setTotpChallenge(err.challenge);
     setTotpCode('');
@@ -162,9 +138,6 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
   }, [open, onClose]);
 
   const done = useCallback(() => {
-    // A full reload rather than a router push: the socket, the balance and the
-    // whole dashboard are built at mount from a token that did not exist a
-    // moment ago.
     window.location.reload();
   }, []);
 
@@ -356,10 +329,9 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
             </div>
             <div className="authm__field">
               <label htmlFor="authm-password">{t('common.password')}</label>
-              <input
+              <PasswordInput
                 id="authm-password"
                 className="authm__input"
-                type="password"
                 autoComplete="current-password"
                 value={password}
                 disabled={busy}
@@ -507,10 +479,9 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
             />
             <div className="authm__field">
               <label htmlFor="authm-new-password">{t('common.newPassword')}</label>
-              <input
+              <PasswordInput
                 id="authm-new-password"
                 className="authm__input"
-                type="password"
                 autoComplete="new-password"
                 value={newPassword}
                 disabled={busy}
@@ -521,10 +492,9 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
             </div>
             <div className="authm__field">
               <label htmlFor="authm-confirm-password">{t('common.confirmNewPassword')}</label>
-              <input
+              <PasswordInput
                 id="authm-confirm-password"
                 className="authm__input"
-                type="password"
                 autoComplete="new-password"
                 value={confirmPassword}
                 disabled={busy}

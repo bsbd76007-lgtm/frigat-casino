@@ -25,8 +25,6 @@ export function play(params: LimboParams, seed: SeedContext): EngineResult {
   const u = calculateOutcome(seed.serverSeed, seed.clientSeed, seed.nonce);
   const raw = (1 - EDGE) / (1 - u);
   const achieved = Math.max(1, Math.min(raw, LIMBO.maxMultiplier));
-  // Floor to 2dp, matching computeCrashPoint — the displayed/verified draw is
-  // never rounded up past what the seed actually produced.
   const achievedMultiplier = Math.floor(achieved * 100) / 100;
 
   const win = achievedMultiplier >= targetMultiplier;

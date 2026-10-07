@@ -1,24 +1,5 @@
 'use client';
 
-/**
- * /promotions
- *
- * Every offer listed here is one the server can actually pay out:
- *
- *   Weekly rakeback  POST /api/vip/claim-rakeback
- *   Partner revenue  POST /api/referrals/claim
- *
- * A "deposit match" was on the brief and is **not** here, because no endpoint
- * grants one — there is no bonus balance, no wagering-requirement tracking and
- * nothing to credit. Advertising a match a real-money player could accept and
- * then never receive is a chargeback and a complaint, not a marketing win. It
- * belongs on this page the day the ledger can honour it.
- *
- * Each card links to the surface that owns its claim, so there is exactly one
- * implementation of each payout. The daily wheel and the Free Money page are
- * gone — there is no free-money offer to advertise here.
- */
-
 import Link from 'next/link';
 
 import { useStoredToken } from '@/hooks/useStoredToken';

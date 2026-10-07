@@ -7,16 +7,6 @@ import { getBalance } from '../services/ledger.service';
 import * as chicken from '../engines/chicken.engine';
 import { connect as open, seedPlayer, startServer, type Frame } from './helpers/socket';
 
-/**
- * Chicken Road, end to end over the real socket and a real ledger.
- *
- * The engine tests prove the maths; these prove the money: that the stake is
- * taken once, a cashout pays exactly the ladder, a bust pays nothing, and the
- * races a player can provoke by sending two frames at once cannot debit or pay
- * twice. Each round's fate is predicted from the committed seed, so every
- * assertion is exact rather than statistical.
- */
-
 let app: FastifyInstance;
 let port: number;
 
@@ -34,15 +24,10 @@ const connect = (userId: string) => open(port, userId, 'CHICKEN');
 const isType = (type: string) => (f: Frame) => f.type === type && f.data.gameType !== 'CRASH';
 const isError = (f: Frame) => f.type === 'ERROR';
 
-/** Lane a medium round may first cash out on — cash out is locked below it. */
 const UNLOCK = chicken.minCashoutLane('medium');
 
 type Player = Awaited<ReturnType<typeof connect>>;
 
-/**
- * Bets and steps `lanes` hops, retrying on a bust, until a round is standing on
- * that lane with the chicken alive. Every retried round is a real settled bet.
- */
 async function standOn(p: Player, lanes: number, amount = '10.00') {
   for (;;) {
     p.send('BET', { amount, currency: 'USD', params: { mode: 'medium' } });
@@ -57,7 +42,6 @@ async function standOn(p: Player, lanes: number, amount = '10.00') {
   }
 }
 
-/** The round's bust lane, re-derived from the seed the server committed to. */
 async function predictBust(accepted: Frame): Promise<number | null> {
   const pair = await prisma.provableSeed.findFirstOrThrow({
     where: { hashedServerSeed: String(accepted.data.hashedServerSeed) },
@@ -95,7 +79,6 @@ describe('chicken over the socket', () => {
       expect(accepted.data.balance).toBe(expected.toString());
 
       const bust = await predictBust(accepted);
-      // Walk to the unlock lane, then cash out if the seed lets the chicken get there.
       const target = UNLOCK;
       let lane = 0;
       let busted = false;
@@ -154,7 +137,6 @@ describe('chicken over the socket', () => {
     p.send('CASHOUT');
     const err = await p.next(isError);
     expect(err.data.code).toBe('CASHOUT_LOCKED');
-    // Nothing paid, and the round is still live: the next hop is answered.
     expect(await getBalance(userId)).toBe(before);
     p.send('STEP');
     const f = await p.next((x) => isType('STATE_UPDATE')(x) || isType('GAME_RESULT')(x));
@@ -193,7 +175,6 @@ describe('chicken over the socket', () => {
       multiplier: chicken.multiplierAt('medium', UNLOCK),
     });
 
-    // And the round is really this connection's to finish.
     const before = new Prisma.Decimal(await getBalance(userId));
     second.send('CASHOUT');
     const result = await second.next(isType('GAME_RESULT'));

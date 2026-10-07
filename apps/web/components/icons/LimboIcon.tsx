@@ -26,7 +26,6 @@ export function LimboIcon({ size = 40, title, ...rest }: GameIconProps) {
         </filter>
       </defs>
 
-      {/* Target multiplier bar the draw is measured against. */}
       <line
         x1="6"
         y1="16"
@@ -49,7 +48,6 @@ export function LimboIcon({ size = 40, title, ...rest }: GameIconProps) {
         TARGET
       </text>
 
-      {/* Axes, matching the chart language the other instant games use. */}
       <path
         d="M7 6v35h34"
         fill="none"
@@ -58,7 +56,6 @@ export function LimboIcon({ size = 40, title, ...rest }: GameIconProps) {
         strokeLinecap="round"
       />
 
-      {/* Ascending draw, clearing the bar. */}
       <path
         d="M9 37c8-2 13-8 16-15s6-11 12-14"
         fill="none"
@@ -73,7 +70,6 @@ export function LimboIcon({ size = 40, title, ...rest }: GameIconProps) {
         <circle cx="37" cy="8.5" r="4.6" fill="none" stroke="#fff6d8" strokeWidth=".8" opacity=".6" />
       </g>
 
-      {/* "x" multiplier mark trailing the orb. */}
       <path
         d="M27 22.5l3.2 3.2m0-3.2-3.2 3.2"
         stroke="#d9a441"

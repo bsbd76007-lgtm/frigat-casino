@@ -1,29 +1,11 @@
 'use client';
 
-/**
- * FRIGAT — Wallet Balance Hook
- *
- * Tracks the authoritative wallet balance streamed over the game socket. The
- * server is the single source of truth (see ledger.service.ts); this hook never
- * computes a balance locally, it only records what the ledger reports.
- *
- * Balances are Postgres `Decimal(18, 8)` serialized as strings. They are kept
- * as strings end-to-end and formatted digit-wise — parsing them into a JS
- * number would reintroduce exactly the float drift the schema exists to
- * prevent.
- *
- * The server attaches `balance` to BALANCE, BET_ACCEPTED and GAME_RESULT. All
- * three are consumed: frames arrive in order on a single socket, so the most
- * recent one always wins.
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { formatDecimalString, isDecimalString } from '@/lib/decimal';
 import type { ServerEventType, UseSocketResult } from '@/hooks/useSocket';
 export { formatDecimalString };
 
-/** Events that carry an authoritative `balance` field. */
 const BALANCE_BEARING_EVENTS: ServerEventType[] = [
   'BALANCE',
   'BET_ACCEPTED',
@@ -38,7 +20,6 @@ export interface UseBalanceOptions {
 }
 
 export interface UseBalanceResult {
-  /** Authoritative balance as an exact decimal string, or null until synced. */
   balance: string | null;
   previousBalance: string | null;
   formatted: string;

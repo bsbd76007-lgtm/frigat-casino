@@ -1,15 +1,3 @@
-/**
- * FRIGAT — Admin API proxy
- *
- * Forwards /api/admin/* from the browser to the Fastify admin API, attaching
- * the session JWT from the httpOnly cookie as a Bearer token. The credential
- * therefore never reaches client JavaScript.
- *
- * The session is re-verified here as defence in depth. Fastify's `requireAdmin`
- * authorises independently and remains the real boundary — this proxy only
- * decides whether to spend a request on it.
- */
-
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
@@ -42,12 +30,7 @@ function bearer(request: Request): string | null {
 }
 
 async function forward(request: Request, path: string[], method: string) {
-  // Cookie first, Bearer header second. The cookie is the credential the
-  // browser sends on its own and cannot be read by script; the header is what
-  // lib/api.ts attaches from localStorage, and is the only one that arrives
-  // when the cookie was never set — a dev server restart, or a browser that
-  // declined it. Accepting either is what clears the 401 on /admin/users.
-  const token = cookies().get(SESSION_COOKIE)?.value ?? bearer(request);
+  const token = (await cookies()).get(SESSION_COOKIE)?.value ?? bearer(request);
 
   const session = await verifySession(token);
   if (session.status !== 'valid') {
@@ -93,15 +76,15 @@ async function forward(request: Request, path: string[], method: string) {
   }
 }
 
-export async function GET(request: Request, ctx: { params: { path: string[] } }) {
-  return forward(request, ctx.params.path, 'GET');
+export async function GET(request: Request, ctx: { params: Promise<{ path: string[] }> }) {
+  return forward(request, (await ctx.params).path, 'GET');
 }
-export async function POST(request: Request, ctx: { params: { path: string[] } }) {
-  return forward(request, ctx.params.path, 'POST');
+export async function POST(request: Request, ctx: { params: Promise<{ path: string[] }> }) {
+  return forward(request, (await ctx.params).path, 'POST');
 }
-export async function PUT(request: Request, ctx: { params: { path: string[] } }) {
-  return forward(request, ctx.params.path, 'PUT');
+export async function PUT(request: Request, ctx: { params: Promise<{ path: string[] }> }) {
+  return forward(request, (await ctx.params).path, 'PUT');
 }
-export async function PATCH(request: Request, ctx: { params: { path: string[] } }) {
-  return forward(request, ctx.params.path, 'PATCH');
+export async function PATCH(request: Request, ctx: { params: Promise<{ path: string[] }> }) {
+  return forward(request, (await ctx.params).path, 'PATCH');
 }

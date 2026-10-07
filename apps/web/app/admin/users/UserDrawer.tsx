@@ -1,17 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — User detail drawer
- *
- * Privileged actions: manual balance adjustment, role change, freeze/unfreeze.
- * All three post through /api/admin/* so the session token stays in the
- * httpOnly cookie; the Fastify API re-authorises and writes the audit entry.
- *
- * Every adjustment carries an idempotency key generated when the form opens, so
- * a double-click or a retried request cannot move money twice — the server
- * treats the second attempt as a replay.
- */
-
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -57,8 +45,6 @@ export function UserDrawer({
   const [message, setMessage] = useState<Message>(null);
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
 
-  // Re-sync when the row refreshes underneath us (router.refresh, or another
-  // admin changing the same account), so the field never shows a stale cut.
   useEffect(() => {
     setRevShare(user.revSharePercentage);
   }, [user.revSharePercentage]);
@@ -125,8 +111,6 @@ export function UserDrawer({
   const adjustmentValid =
     /^\d+(\.\d{1,8})?$/.test(amount) && Number(amount) > 0 && reason.trim().length >= 3;
 
-  // Mirrors the server's validation, including the 0–100 ceiling: above 100 the
-  // platform would pay the affiliate more than the downline actually lost.
   const revShareValid =
     /^\d{1,3}(\.\d{1,2})?$/.test(revShare) && Number(revShare) >= 0 && Number(revShare) <= 100;
 
@@ -190,7 +174,6 @@ export function UserDrawer({
           </p>
         )}
 
-        {/* ── Balance adjustment ── */}
         <section className="drawer__section">
           <span className="drawer__legend">Adjust balance</span>
           <div className="drawer__row">
@@ -240,7 +223,6 @@ export function UserDrawer({
           </button>
         </section>
 
-        {/* ── Role ── */}
         <section className="drawer__section">
           <span className="drawer__legend">Role</span>
           <div className="drawer__row">
@@ -273,7 +255,6 @@ export function UserDrawer({
           </div>
         </section>
 
-        {/* ── RevShare cut ── */}
         <section className="drawer__section">
           <span className="drawer__legend">RevShare cut</span>
           <p className="metric__note">
@@ -322,7 +303,6 @@ export function UserDrawer({
           )}
         </section>
 
-        {/* ── Freeze ── */}
         <section className="drawer__section">
           <span className="drawer__legend">Account freeze</span>
           <p className="metric__note">

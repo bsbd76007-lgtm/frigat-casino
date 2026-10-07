@@ -1,20 +1,3 @@
-/**
- * FRIGAT — Admin session verification (server-side only)
- *
- * Uses `jose` rather than `jsonwebtoken` because Next middleware runs on the
- * Edge runtime, which has no node:crypto. Shared by the middleware and by
- * server components so both apply identical rules.
- *
- * IMPORTANT — what this is and is not:
- *   This gates *navigation* to /admin pages. It is not the security boundary.
- *   Admin data lives behind `requireAdmin` on the Fastify API, which
- *   re-authorises every request; anyone can call that API directly, bypassing
- *   Next entirely. Treat this module as UX plus defence in depth.
- *
- * This file must never be imported by a client component — it reads the signing
- * secret. It is deliberately free of a 'use client' directive and of any React.
- */
-
 import { jwtVerify } from 'jose';
 
 export const SESSION_COOKIE = 'token';
@@ -34,14 +17,10 @@ export type SessionResult =
 
 function secretKey(): Uint8Array | null {
   const secret = process.env.JWT_SECRET;
-  // Fail closed: with no secret we cannot verify anything, so we must not
-  // fall back to "allow". A missing secret is a deployment error, not a
-  // reason to serve the admin panel unauthenticated.
-  if (!secret || secret.length === 0) return null;
+  if (!secret || secret.length < 32) return null;
   return new TextEncoder().encode(secret);
 }
 
-/** Verifies a raw JWT string. Never throws. */
 export async function verifySession(
   token: string | undefined | null
 ): Promise<SessionResult> {

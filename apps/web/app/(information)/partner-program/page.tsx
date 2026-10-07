@@ -1,21 +1,5 @@
 'use client';
 
-/**
- * /partner-program
- *
- * The affiliate scheme, described against what the server actually does:
- * `revSharePercentage` on the user row (10% by default, per-account so an
- * affiliate can be given a custom cut), earnings accruing into a separate
- * `affiliateBalance`, and `POST /api/referrals/claim` to draw it down.
- *
- * ── On the "Join Program" form ─────────────────────────────────────────────
- * There is no join endpoint, and there does not need to be: every account is
- * issued a `referralCode` at registration, so the programme is already open to
- * everyone with a login. A form posting an application into nothing would be a
- * fake — this section instead does the only two things that are real, which is
- * hand a signed-in partner their link and send everyone else to registration.
- */
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 
@@ -34,11 +18,6 @@ interface ReferralSummary {
   currency: string;
 }
 
-/**
- * Mirrors `revSharePercentage` on the user row — 10% unless an admin lifts it.
- * The share is of the house edge on referred players' bets (see
- * settleAffiliateReward), not of their losses.
- */
 const TIERS = [
   { band: 'Standard', invited: '1 – 9 active', share: '10%' },
   { band: 'Silver partner', invited: '10 – 49 active', share: 'up to 12%' },
@@ -61,8 +40,6 @@ export default function PartnerProgramPage() {
         if (!cancelled) setSummary(data);
       })
       .catch((err) => {
-        // A dead session sends the player to sign-in; anything else just leaves
-        // the preview empty rather than breaking the page.
         consumedAsSessionExpiry(err);
       });
     return () => {
@@ -90,7 +67,6 @@ export default function PartnerProgramPage() {
       if (copyTimer.current) clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => setCopied(false), 1600);
     } catch {
-      /* clipboard unavailable — the link is selectable in place */
     }
   }, [link]);
 

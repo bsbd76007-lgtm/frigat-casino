@@ -303,7 +303,8 @@
     "targetMultiplier": "Target multiplier",
     "rows": "Rows",
     "risk": "Risk",
-    "topMultiplier": "Top multiplier"
+    "topMultiplier": "Top multiplier",
+    "rocketFlewTo": "Rocket flew to"
   },
   "fair": {
     "title": "Provably Fair",
@@ -540,6 +541,9 @@
     "clientSeed": "Client seed"
   },
   "auth": {
+    "or": "or",
+    "googleFailed": "Google sign-in did not complete. Please try again.",
+    "googleUseSignIn": "This account uses an authenticator app. Continue with Google from the Sign in page.",
     "email": "Email",
     "password": "Password",
     "confirmPassword": "Confirm password",
@@ -590,7 +594,9 @@
     "resetPasswordSub": "Enter your email and we will send you a {digits}-digit code to set a new password.",
     "sending": "Sending…",
     "sendResetCode": "Send reset code",
-    "rememberedIt": "Remembered it?"
+    "rememberedIt": "Remembered it?",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "gameUi": {
     "betAmount": "Bet amount",

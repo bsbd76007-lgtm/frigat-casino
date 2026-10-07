@@ -1,18 +1,6 @@
-/**
- * Slot machine — symbol palette and reel drawing.
- *
- * `makeStrip` and `decorativeSymbol` build the blur the player sees *while* the
- * reels are moving; they are deliberately random and deliberately never
- * consulted for a result, which comes from the server.
- */
-
 import { SLOTS_SYMBOLS, SLOTS_WEIGHTS, type SlotSymbol } from '@frigat/shared';
 
 import { STRIP_LENGTH } from './choreography';
-
-// ─────────────────────────────────────────────
-// Symbols
-// ─────────────────────────────────────────────
 
 export const SYMBOL_COLOURS: Record<SlotSymbol, { body: string; edge: string; glow: string }> = {
   CHERRY: { body: '#e5484d', edge: '#7f1d1d', glow: '#d69199' },
@@ -27,11 +15,6 @@ export const SYMBOL_COLOURS: Record<SlotSymbol, { body: string; edge: string; gl
 
 export const WEIGHT_TOTAL = SLOTS_SYMBOLS.reduce((sum, s) => sum + SLOTS_WEIGHTS[s], 0);
 
-/**
- * A weighted symbol for the *decorative* strip only. The blur between stops is
- * cosmetic — the symbols that matter arrive from the server — but drawing them
- * from the real weights keeps a spin from looking unlike its own paytable.
- */
 export function decorativeSymbol(): SlotSymbol {
   let roll = Math.random() * WEIGHT_TOTAL;
   for (const symbol of SLOTS_SYMBOLS) {
@@ -45,7 +28,6 @@ export function makeStrip(): SlotSymbol[] {
   return Array.from({ length: STRIP_LENGTH }, decorativeSymbol);
 }
 
-/** Rounded rectangle path — the plate every symbol is drawn on. */
 export function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -64,10 +46,6 @@ export function roundRect(
   ctx.closePath();
 }
 
-/**
- * Draws one symbol centred in a cell. Everything is derived from `size` so the
- * board scales cleanly from a phone to a desktop without a second asset set.
- */
 export function drawSymbol(
   ctx: CanvasRenderingContext2D,
   symbol: SlotSymbol,
@@ -120,7 +98,6 @@ export function drawSymbol(
       ctx.strokeStyle = palette.edge;
       ctx.lineWidth = Math.max(2, size * 0.035);
       ctx.stroke();
-      // Highlight, so the fruit reads as round rather than flat.
       ctx.beginPath();
       ctx.ellipse(cx - r * 0.3, cy - r * 0.35, r * 0.28, r * 0.18, -0.6, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,255,255,.45)';
@@ -182,8 +159,6 @@ export function drawSymbol(
       break;
     }
     case 'WILD': {
-      // Five-pointed star: unmistakable at a glance, which matters for the
-      // symbol that substitutes for every other one.
       ctx.beginPath();
       for (let i = 0; i < 10; i += 1) {
         const radius = i % 2 === 0 ? r * 1.12 : r * 0.46;
@@ -211,7 +186,6 @@ export function drawSymbol(
   ctx.restore();
 }
 
-/** Overshoot easing — the reel passes its stop and springs back onto it. */
 export function easeOutBack(t: number): number {
   const c1 = 1.70158;
   const c3 = c1 + 1;

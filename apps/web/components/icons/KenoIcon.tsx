@@ -37,7 +37,6 @@ export function KenoIcon({ size = 40, title, ...rest }: GameIconProps) {
         </filter>
       </defs>
 
-      {/* Board the balls were drawn from. */}
       <g fill="#232d3a" opacity=".6">
         {GRID.map((p, i) => (
           <circle key={i} cx={p.x} cy={p.y} r="1" />

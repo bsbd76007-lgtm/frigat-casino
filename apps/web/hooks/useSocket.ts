@@ -1,29 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Game Socket Hook (native WebSocket)
- *
- * Owns a single authenticated connection to the server's `/ws` endpoint and
- * fans inbound events out to subscribers. Deliberately dependency-free: the
- * browser's native WebSocket is enough for this protocol.
- *
- * Behaviour:
- *  - Connects only when a token is present; the server rejects anonymous
- *    upgrades with close code 1008. Omit `token` entirely and the hook reads
- *    `localStorage.token` itself (and follows it when it changes); pass `null`
- *    to hold the connection closed deliberately.
- *  - Reconnects with exponential backoff + jitter, EXCEPT on 1008
- *    (unauthorized) — retrying a rejected token just burns connections.
- *  - Messages sent while the socket is still connecting are queued and
- *    flushed on open, so callers never have to poll `status` before betting.
- *  - Safe under React StrictMode's double-mount: the teardown marks the close
- *    as intentional so no stray reconnect is scheduled.
- *
- * Note: there is no application-level heartbeat because the server has no PING
- * action (it would answer with an ERROR). Liveness relies on the browser's
- * protocol-level ping/pong and the close event.
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GameType } from '@frigat/shared/types';
 import { readStoredToken, subscribeToToken } from '@/lib/token';
@@ -64,12 +40,12 @@ export interface ServerMessage {
 }
 
 export type SocketStatus =
-  | 'idle' // no token / disabled — never attempted
+  | 'idle'
   | 'connecting'
   | 'open'
   | 'reconnecting'
   | 'closed'
-  | 'unauthorized'; // server rejected the token (1008) — terminal
+  | 'unauthorized';
 
 export type MessageHandler<N extends { type: string } = ServerMessage> = (
   data: Record<string, unknown>,
@@ -78,10 +54,6 @@ export type MessageHandler<N extends { type: string } = ServerMessage> = (
 
 export interface UseSocketOptions {
   url: string;
-  /**
-   * JWT presented to the server. `null` keeps the hook dormant; omitting the
-   * field reads `localStorage.token` instead.
-   */
   token?: string | null;
   enabled?: boolean;
   baseDelayMs?: number;
@@ -105,14 +77,6 @@ function buildUrl(url: string, token: string): string {
   return `${url}${separator}token=${encodeURIComponent(token)}`;
 }
 
-/**
- * Reads the persisted session token and tracks later changes to it (including
- * a sign-out performed in another tab).
- *
- * Starts as `null` and fills in after mount rather than reading during render:
- * localStorage does not exist on the server, and a first client render that
- * disagreed with the server's HTML would be a hydration mismatch.
- */
 export function useStoredToken(): string | null {
   const [token, setToken] = useState<string | null>(null);
 
@@ -147,8 +111,6 @@ export function useSocket(options: UseSocketOptions): UseSocketResult {
   const intentionalCloseRef = useRef(false);
   const [reconnectNonce, setReconnectNonce] = useState(0);
 
-  // Keep tuning knobs in refs so the connect effect depends only on identity
-  // (url/token/enabled) and never tears the socket down over a changed number.
   const tuningRef = useRef({ baseDelayMs, maxDelayMs, maxRetries });
   tuningRef.current = { baseDelayMs, maxDelayMs, maxRetries };
 
@@ -273,8 +235,6 @@ export function useSocket(options: UseSocketOptions): UseSocketResult {
         if (disposed || intentionalCloseRef.current) return;
         socketRef.current = null;
 
-        // 1008 = policy violation; the server uses it for a rejected token.
-        // Retrying cannot succeed until the caller supplies a new one.
         if (event.code === 1008) {
           setStatus('unauthorized');
           setError(event.reason || 'Unauthorized');

@@ -8,38 +8,14 @@ import { useLanguage } from '@/components/providers/LanguageProvider';
 import type { CatalogueEntry, GameCategory } from '@/lib/gameCatalogue';
 
 interface GameShelfProps {
-  /** Section heading, already translated by the caller's `t`. */
   title: string;
   games: readonly CatalogueEntry[];
-  /** Category the "see all" link filters to. */
   category: GameCategory;
   onLaunch?: (entry: CatalogueEntry) => void;
   onSeeAll?: (category: GameCategory) => void;
-  /**
-   * The first shelf on the page runs at a larger tile size. One row being
-   * bigger than the others is the whole point — it is what makes the page
-   * read as edited rather than as a dump of everything at one size.
-   */
   size?: 'lead' | 'default';
 }
 
-/**
- * A horizontally scrolling row of games.
- *
- * The BEM block is `shelf`, NOT `rail` — `.rail` is already taken by the
- * sidebar navigation column (sticky, 240px, full viewport height). Naming this
- * `rail` made every game row inherit that geometry.
- *
- * Replaces the wrapping `auto-fill` grid for the curated home view. The grid
- * is still right for a *filtered* view, where the player has asked to see
- * everything in a category and a wall is what they want; it is wrong for the
- * home page, where the job is to show the top of several categories at once
- * and let the row itself say "there is more this way".
- *
- * Scrolling is native — `overflow-x: auto` with scroll-snap. The buttons drive
- * `scrollBy`, so keyboard, trackpad, touch and the buttons all move the same
- * element and there is no scroll position held in React to fall out of sync.
- */
 export function GameShelf({
   title,
   games,
@@ -50,17 +26,11 @@ export function GameShelf({
 }: GameShelfProps) {
   const { t } = useLanguage();
   const trackRef = useRef<HTMLDivElement | null>(null);
-  // Which arrows are live. Both start false: on a track that does not overflow
-  // neither arrow should ever appear, and the effect below turns on only the
-  // ones the measured track actually needs.
   const [canScroll, setCanScroll] = useState({ back: false, forward: false });
 
   const measure = useCallback(() => {
     const el = trackRef.current;
     if (!el) return;
-    // 1px of slack: sub-pixel layout means scrollLeft rarely lands exactly on
-    // either bound, and an arrow that stays faintly enabled at the end of the
-    // row looks broken when pressing it does nothing.
     const max = el.scrollWidth - el.clientWidth;
     setCanScroll({
       back: el.scrollLeft > 1,
@@ -73,9 +43,6 @@ export function GameShelf({
     if (!el) return;
     measure();
     el.addEventListener('scroll', measure, { passive: true });
-    // The track's overflow depends on the container width, which changes with
-    // the sidebar collapsing as well as with the window, so a resize listener
-    // on window alone would miss it.
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => {
@@ -87,9 +54,6 @@ export function GameShelf({
   const page = (direction: 1 | -1) => {
     const el = trackRef.current;
     if (!el) return;
-    // A page is "most of what you can see", not all of it: leaving roughly one
-    // tile behind keeps a visual anchor across the jump, so the row reads as
-    // having moved rather than as having been replaced.
     el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: 'smooth' });
   };
 
@@ -113,9 +77,6 @@ export function GameShelf({
             </button>
           )}
 
-          {/* Arrows are a convenience on top of native scrolling, never the
-              only way through the row — so they are hidden from assistive
-              tech, which gets the scroll container itself. */}
           <div className="shelf__arrows" aria-hidden="true">
             <button
               type="button"
@@ -157,9 +118,6 @@ export function GameShelf({
         </div>
       </header>
 
-      {/* tabIndex on the scroll container is deliberate: a keyboard user must
-          be able to focus the row and pan it with the arrow keys. Without it
-          the only way through a long row is to tab every card in it. */}
       <div
         ref={trackRef}
         className={

@@ -1,16 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Toast renderer
- *
- * Mounted once, in the dashboard layout. Everything else raises toasts through
- * lib/toast.ts, so no component needs a reference to this one.
- *
- * Announced with role="status" and aria-live="polite": a confirmation that only
- * appears visually is invisible to anyone using a screen reader, and "your
- * withdrawal was submitted" is exactly the kind of thing that must be spoken.
- */
-
 import { useCallback, useEffect, useState } from 'react';
 
 import { subscribeToToasts, type Toast } from '@/lib/toast';
@@ -24,7 +13,6 @@ const CSS = `
   display: flex; flex-direction: column; gap: 10px; width: min(360px, calc(100vw - 36px));
   pointer-events: none; }
 @media (max-width: 640px) {
-  /* Above the mobile dock, which owns the bottom of the screen. */
   .fg-toaster { right: 12px; left: 12px; bottom: 84px; width: auto; }
 }
 
@@ -83,7 +71,6 @@ export function Toaster() {
   useEffect(
     () =>
       subscribeToToasts((toast) => {
-        // Cap the stack: a burst of failures must not paper over the screen.
         setToasts((current) => [...current.slice(-2), toast]);
       }),
     []

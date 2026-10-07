@@ -1,19 +1,5 @@
 'use client';
 
-/**
- * FRIGAT — Deposit tab
- *
- * Pick an asset and amount, open a Cryptomus invoice, then show the deposit
- * address as a QR plus a hosted-checkout link.
- *
- * The balance is never advanced locally. Confirmation arrives as a BALANCE
- * frame on the game socket, pushed by the payment webhook once the chain
- * confirms — so the "received" state here is driven by the same authoritative
- * number the header shows, not by anything this component computed.
- *
- * Renders the body only; the overlay, header and tabs belong to WalletModal.
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -27,10 +13,8 @@ import { useLanguage } from '@/components/providers/LanguageProvider';
 
 interface DepositInvoice {
   paymentId: string;
-  /** Asset amount to send, in `currency` — converted by the payment provider. */
   amount: string;
   currency: string;
-  /** What that is worth. The field the player typed is this, not the asset. */
   priceAmount?: string;
   priceCurrency?: string;
   status: string;
@@ -45,18 +29,8 @@ const AMOUNT_PATTERN = /^\d{1,10}(\.\d{1,8})?$/;
 const SESSION_EXPIRED =
   'Your session has expired. Please log in again to make a deposit.';
 
-/** Grace period before the redirect, so the message can actually be read. */
 const REDIRECT_DELAY_MS = 2500;
 
-/**
- * Turns the API's error codes into something a player can act on.
- *
- * The codes are deliberately kept on the wire — they are stable and greppable
- * in logs — but showing one raw ("payments_unavailable") tells the player
- * nothing and reads like a crash. Note that the gateway being misconfigured or
- * refusing our credentials is *our* problem, so that case says so plainly
- * rather than implying the player did something wrong.
- */
 function messageForDepositError(err: unknown): string {
   if (!(err instanceof ApiError)) {
     return 'Could not reach the payment service. Please try again.';
@@ -114,8 +88,6 @@ function QrCode({ value, label }: { value: string; label: string }) {
       aria-label={label}
       shapeRendering="crispEdges"
     >
-      {/* The quiet zone is part of the symbol — without a light margin many
-          scanners will not lock on. */}
       <rect x={-2} y={-2} width={path.size + 4} height={path.size + 4} fill="#fff" />
       <path d={path.d} fill="#000" />
     </svg>
@@ -134,7 +106,6 @@ export default function DepositModal({ open }: { open: boolean }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<'address' | 'amount' | null>(null);
-  /** Set when the API rejects our token, so the panel can offer a way back in. */
   const [sessionExpired, setSessionExpired] = useState(false);
 
   const baselineRef = useRef<string | null>(null);
@@ -146,8 +117,6 @@ export default function DepositModal({ open }: { open: boolean }) {
     [amount]
   );
 
-  // Reset per-invoice state whenever the dialog is closed, so a previous
-  // session's address is never shown against a new one.
   useEffect(() => {
     if (open) return;
     setInvoice(null);
@@ -170,14 +139,6 @@ export default function DepositModal({ open }: { open: boolean }) {
     if (Number(current) > Number(baseline)) setCredited(true);
   }, [balance.balance, invoice, credited]);
 
-  /**
-   * Drops the dead credential and sends the player to sign in again.
-   *
-   * Clearing the token is what actually re-gates the app: the dashboard shell
-   * watches it and swaps in the sign-in gate, so the session cannot linger in a
-   * half-authenticated state where the socket is up but every request 401s.
-   * `next` brings them back to whatever page they were on.
-   */
   const signOutToLogin = useCallback(
     (delayMs = 0) => {
       const target = `/login?next=${encodeURIComponent(pathname || '/')}`;
@@ -194,9 +155,6 @@ export default function DepositModal({ open }: { open: boolean }) {
     [pathname, router, setToken]
   );
 
-  // A pending redirect must not fire after the dialog is gone — the player may
-  // have closed it and carried on, and yanking them to /login then would be
-  // indistinguishable from a random logout.
   useEffect(
     () => () => {
       if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
@@ -219,9 +177,6 @@ export default function DepositModal({ open }: { open: boolean }) {
       setInvoice(result);
     } catch (err) {
       setError(messageForDepositError(err));
-      // A 401 here means the stored token is dead, not that the deposit was
-      // bad input. Say so, then hand the player back to the login page rather
-      // than leaving them clicking a button that can only fail.
       if (err instanceof ApiError && err.status === 401) {
         setSessionExpired(true);
         signOutToLogin(REDIRECT_DELAY_MS);
@@ -237,7 +192,6 @@ export default function DepositModal({ open }: { open: boolean }) {
       setCopied(which);
       setTimeout(() => setCopied((prev) => (prev === which ? null : prev)), 1800);
     } catch {
-      /* no-op */
     }
   }, []);
 

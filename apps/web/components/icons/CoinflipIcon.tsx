@@ -28,8 +28,6 @@ export function CoinflipIcon({ size = 40, title, ...rest }: GameIconProps) {
         </filter>
       </defs>
 
-      {/* The arc the toss travelled, thrown clear of the coin so the two do
-          not merge into one silhouette at card size. */}
       <path
         d="M8.5 40c.5-11 3.4-19.5 8.5-25.5"
         fill="none"
@@ -41,7 +39,6 @@ export function CoinflipIcon({ size = 40, title, ...rest }: GameIconProps) {
       />
 
       <g filter={`url(#${glow})`} transform="rotate(-14 26 22)">
-        {/* Edge slab behind the face gives the coin its thickness. */}
         <ellipse cx="28.4" cy="22" rx="11.2" ry="15.6" fill="#8a5c10" />
         <ellipse cx="26" cy="22" rx="11.2" ry="15.6" fill="#d9a441" />
         <ellipse
@@ -67,8 +64,6 @@ export function CoinflipIcon({ size = 40, title, ...rest }: GameIconProps) {
           />
         ))}
 
-        {/* Struck mark: a diamond over a bar, legible down to 24px where any
-            real device or lettering would turn to mud. */}
         <path d="M26 15.6l4.2 6.4-4.2 6.4-4.2-6.4z" fill="#8a5c10" opacity=".5" />
         <path
           d="M22.4 30.4h7.2"

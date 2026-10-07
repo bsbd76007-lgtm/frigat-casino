@@ -1,12 +1,9 @@
-/* FRIGAT — Admin shell: darker and cooler than the player UI, so it is never
-   mistaken for a customer-facing screen. */
-
 .admin {
   --admin-bg: #070b0f;
-  --admin-side: #0f172a;          /* slate-900 */
+  --admin-side: #0f172a;
   --admin-panel: #111820;
-  --admin-line: #1e293b;          /* slate-800 */
-  --admin-text: #e2e8f0;          /* slate-200 */
+  --admin-line: #1e293b;
+  --admin-text: #e2e8f0;
   --admin-muted: #7d8b9a;
   --admin-accent: #5b8fb9;
 
@@ -17,8 +14,6 @@
   color: var(--admin-text);
 }
 
-/* Optional light mode, stamped on <html> by the header toggle. Only the
-   surfaces move; the accent and status colours are shared with dark. */
 html[data-admin-theme='light'] .admin {
   --admin-bg: #f1f5f9;
   --admin-side: #ffffff;
@@ -30,7 +25,6 @@ html[data-admin-theme='light'] .admin {
 
 .admin__body { display: flex; flex-direction: column; min-width: 0; }
 
-/* ── Sidebar ── */
 .adm-side {
   display: flex;
   flex-direction: column;
@@ -154,7 +148,6 @@ html[data-admin-theme='light'] .adm-side__link[aria-current='page'] { background
 .adm-side__signout:hover:not(:disabled) { color: var(--admin-text); border-color: #334155; }
 .adm-side__signout:disabled { opacity: .5; cursor: not-allowed; }
 
-/* ── Header ── */
 .adm-head {
   display: flex;
   align-items: center;
@@ -270,7 +263,6 @@ html[data-admin-theme='light'] .adm-side__link[aria-current='page'] { background
 .adm-head__profile-text b { font-size: 12.5px; }
 .adm-head__profile-text small { font-size: 10px; color: var(--admin-muted); font-family: var(--fg-mono); }
 
-/* ── Metric cards ── */
 .adm-cards {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -301,7 +293,6 @@ html[data-admin-theme='light'] .adm-side__link[aria-current='page'] { background
 .adm-card__sub { font-size: 11.5px; color: var(--admin-muted); }
 .adm-cards__error { margin-bottom: 18px; font-size: 13px; color: #c25560; }
 
-/* ── Shared page furniture ── */
 .adm-page__head {
   display: flex;
   align-items: flex-start;
@@ -363,7 +354,6 @@ html[data-admin-theme='light'] .adm-side__link[aria-current='page'] { background
 .adm-table tr:last-child td { border-bottom: none; }
 html[data-admin-theme='light'] .adm-table td { border-bottom-color: #eef2f7; }
 
-/* Status pills: green approved, yellow pending, red flagged/failed. */
 .adm-pill {
   display: inline-block;
   padding: 3px 9px;
@@ -398,7 +388,6 @@ html[data-admin-theme='light'] .adm-table td { border-bottom-color: #eef2f7; }
 .admin__title { margin: 0 0 4px; font-size: 21px; font-weight: 700; }
 .admin__sub { margin: 0; font-size: 13px; color: var(--admin-muted); }
 
-/* ── Metric widgets ─────────────────────── */
 .metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -464,7 +453,6 @@ html[data-admin-theme='light'] .adm-table td { border-bottom-color: #eef2f7; }
   .admin__link, .admin__signout { transition: none; }
 }
 
-/* ── Tables ─────────────────────────────── */
 .tbl__wrap { overflow-x: auto; border: 1px solid var(--admin-line); border-radius: var(--fg-r-lg); background: var(--admin-panel); }
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl th {
@@ -488,8 +476,6 @@ html[data-admin-theme='light'] .adm-table td { border-bottom-color: #eef2f7; }
 }
 .tag--admin    { color: #5b8fb9; background: rgba(91, 143, 185,.14); border-color: rgba(91, 143, 185,.34); }
 .tag--user     { color: var(--admin-muted); background: rgba(125,139,154,.12); border-color: rgba(125,139,154,.3); }
-/* Red, not blue: a frozen account is a flag on the row, and it appears beside
-   pending/approved pills where blue reads as merely informational. */
 .tag--frozen   { color: #c25560; background: rgba(240,97,109,.13); border-color: rgba(240,97,109,.34); }
 .tag--active   { color: #4e9e7a; background: rgba(53,200,138,.13); border-color: rgba(53,200,138,.32); }
 .tag--deposit  { color: #4e9e7a; background: rgba(53,200,138,.13); border-color: rgba(53,200,138,.32); }
@@ -500,7 +486,6 @@ html[data-admin-theme='light'] .adm-table td { border-bottom-color: #eef2f7; }
 .tag--pending  { color: #d9a441; background: rgba(217, 164, 65,.13); border-color: rgba(217, 164, 65,.32); }
 .tag--failed   { color: #c25560; background: rgba(240,97,109,.13); border-color: rgba(240,97,109,.32); }
 
-/* ── Filters ────────────────────────────── */
 .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
 .filters__search { flex: 1 1 240px; min-width: 180px; }
 .ainput {
@@ -521,7 +506,6 @@ html[data-admin-theme='light'] .adm-table td { border-bottom-color: #eef2f7; }
 .abtn[aria-pressed='true'] { border-color: var(--admin-accent); color: var(--admin-accent); }
 .pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 12px; font-size: 12.5px; color: var(--admin-muted); }
 
-/* ── Drawer ─────────────────────────────── */
 .drawer__scrim { position: fixed; inset: 0; z-index: 60; background: rgba(3,6,9,.62); }
 .drawer {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 61; width: min(440px, 100%);
@@ -545,8 +529,6 @@ html[data-admin-theme='light'] .adm-table td { border-bottom-color: #eef2f7; }
   box-shadow: var(--fg-input-inset);
 }
 
-/* Access gate — rendered instead of the shell, so it carries its own colours
-   rather than inheriting the custom properties scoped to `.admin`. */
 .admin-gate {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 12px; min-height: 100vh; padding: 40px 24px; text-align: center;
@@ -565,9 +547,6 @@ html[data-admin-theme='light'] .adm-table td { border-bottom-color: #eef2f7; }
 }
 
 
-/* ── Live support console ────────────────────────────────
-   Two panes: the queue and the open thread. The grid collapses to one column
-   below 900px, where a split view has nothing to split. */
 .supadm {
   display: grid;
   grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
@@ -742,8 +721,6 @@ html[data-admin-theme='light'] .adm-table td { border-bottom-color: #eef2f7; }
 .supadm__hint--center { margin: auto; text-align: center; }
 .supadm__error { grid-column: 1 / -1; margin: 0; font-size: 12.5px; color: #ff6b6b; }
 
-/* Brand lockup: the name in title case, no graphic. The mark is redundant
-   beside it — the asset already spells "FRIGAT" under its monogram. */
 .adm-side__mark {
   display: flex;
   align-items: center;

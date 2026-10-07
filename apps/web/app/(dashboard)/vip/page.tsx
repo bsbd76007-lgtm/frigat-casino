@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 
 import { useGameSocket } from '@/components/providers/GameSocketProvider';
 import { useLanguage } from '@/components/providers/LanguageProvider';
@@ -21,7 +20,6 @@ interface VipStatus {
   currency: string;
 }
 
-/** Mirrors VIP_TIERS in apps/server/src/services/bonus.service.ts. */
 const TIERS = [
   { name: 'Unranked', threshold: 0, rakeback: '—' },
   { name: 'Bronze', threshold: 2_500, rakeback: '1%' },

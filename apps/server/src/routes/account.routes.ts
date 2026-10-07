@@ -1,12 +1,3 @@
-/**
- * The signed-in player's account security: authenticator two-factor, the
- * Telegram link, and deleting the account.
- *
- * Every route here acts on the caller's own row — the id always comes from the
- * session, never from the request — and every route that accepts a code sits
- * behind the same per-IP and per-account throttles as sign-in.
- */
-
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';
@@ -26,10 +17,8 @@ import {
 } from '../services/totp.service';
 import { gameState } from '../websocket/gameState.store';
 
-/** Telegram's own rule: 5–32 characters, letters, digits and underscores. */
 const TELEGRAM_USERNAME = /^[A-Za-z][A-Za-z0-9_]{4,31}$/;
 
-/** Withdrawals still in flight — deleting under one would strand the money. */
 const OPEN_WITHDRAWALS = ['PENDING', 'PENDING_ADMIN_REVIEW', 'CONFIRMING'] as const;
 
 function requireUser(req: FastifyRequest, reply: FastifyReply): string | null {
@@ -46,10 +35,6 @@ function str(value: unknown): string {
 }
 
 export function registerAccountRoutes(app: FastifyInstance) {
-  /**
-   * GET /api/account/security
-   * What the account panel's security section shows.
-   */
   app.get('/api/account/security', async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return reply;
@@ -74,15 +59,6 @@ export function registerAccountRoutes(app: FastifyInstance) {
     });
   });
 
-  // ── Authenticator two-factor ─────────────────────────
-
-  /**
-   * POST /api/account/2fa/setup
-   *
-   * Issues a fresh secret and stores it sealed, but leaves 2FA *off*: nothing
-   * changes about sign-in until /enable proves the player's app produces the
-   * right codes. Calling it again replaces an unconfirmed secret.
-   */
   app.post('/api/account/2fa/setup', async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return reply;
@@ -108,12 +84,6 @@ export function registerAccountRoutes(app: FastifyInstance) {
     return reply.send({ secret, otpauthUri: otpauthUri(secret, user.email) });
   });
 
-  /**
-   * POST /api/account/2fa/enable  { code }
-   *
-   * Turns 2FA on once a code from the pending secret checks out, and returns
-   * the backup codes — the only time they are ever shown.
-   */
   app.post<{ Body: { code?: unknown } }>('/api/account/2fa/enable', async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return reply;
@@ -161,13 +131,6 @@ export function registerAccountRoutes(app: FastifyInstance) {
     return reply.send({ enabled: true, backupCodes: codes });
   });
 
-  /**
-   * POST /api/account/2fa/disable  { code }
-   *
-   * Needs a current code (or a backup code): a session alone must not be able
-   * to strip the second factor, or a stolen session could make itself
-   * permanent.
-   */
   app.post<{ Body: { code?: unknown } }>('/api/account/2fa/disable', async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return reply;
@@ -201,14 +164,6 @@ export function registerAccountRoutes(app: FastifyInstance) {
     return reply.send({ enabled: false });
   });
 
-  // ── Telegram (trial) ─────────────────────────────────
-  //
-  // A trial link: the username is stored and shown, but no bot confirms the
-  // player owns it yet, so nothing may trust it — no notifications, no sign-in,
-  // no payouts keyed off it. `telegramId`, which a real bot login would fill,
-  // is deliberately left alone.
-
-  /** POST /api/account/telegram  { username } */
   app.post<{ Body: { username?: unknown } }>('/api/account/telegram', async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return reply;
@@ -229,7 +184,6 @@ export function registerAccountRoutes(app: FastifyInstance) {
     return reply.send({ telegram: { username, linkedAt } });
   });
 
-  /** DELETE /api/account/telegram */
   app.delete('/api/account/telegram', async (req, reply) => {
     const userId = requireUser(req, reply);
     if (!userId) return reply;
@@ -241,25 +195,6 @@ export function registerAccountRoutes(app: FastifyInstance) {
     return reply.send({ telegram: null });
   });
 
-  // ── Deleting the account ─────────────────────────────
-
-  /**
-   * POST /api/account/delete  { password, code? }
-   *
-   * Not a row delete: settled bets, ledger entries and audit rows reference
-   * the user, and money records are not ours to erase. The account is instead
-   * made unusable and anonymous in one write —
-   *
-   *   - email replaced with a unique placeholder, so the address is free to
-   *     register again and no longer identifies anyone;
-   *   - password replaced with an unguessable hash, Telegram and 2FA cleared;
-   *   - frozen, so the ledger refuses any bet and the socket refuses to connect;
-   *   - tokenVersion bumped, so every session already issued stops working.
-   *
-   * Refused while there is money or play still in motion: a balance above
-   * zero, an open withdrawal, or a Mines / Chicken round in progress. Deleting
-   * under any of those would strand funds on an account nobody can reach.
-   */
   app.post<{ Body: { password?: unknown; code?: unknown } }>(
     '/api/account/delete',
     async (req, reply) => {
@@ -289,6 +224,14 @@ export function registerAccountRoutes(app: FastifyInstance) {
         return reply.code(403).send({
           error: 'admin_cannot_self_delete',
           message: 'Admin accounts cannot be deleted from here. Ask another admin to remove the role first.',
+        });
+      }
+
+      if (!user.passwordHash) {
+        return reply.code(409).send({
+          error: 'password_not_set',
+          message:
+            'This account signs in with Google and has no password yet. Set one with "Forgot password", then delete the account.',
         });
       }
 
@@ -339,6 +282,7 @@ export function registerAccountRoutes(app: FastifyInstance) {
           frozenAt: new Date(),
           frozenReason: 'Deleted by the account holder',
           deletedAt: new Date(),
+          googleId: null,
           telegramId: null,
           telegramUsername: null,
           telegramLinkedAt: null,

@@ -48,38 +48,9 @@ import {
 } from './aviaMasters/draw';
 import { CSS, STYLE_ID } from './aviaMasters/styles';
 
-// Configuration was part of this file before it was split three ways;
-// re-exported so nothing that reached for it here has to move.
 export { GAME_CONFIG, PICKUPS, payoutFor } from './aviaMasters/config';
 export type { Phase, PickupSpec } from './aviaMasters/config';
 
-/**
- * Avia Masters — one bet, one flight, drawn on a canvas.
- *
- * The player sets a stake and presses Fly; there is no input after that. The
- * red biplane leaves the launch carrier, flies through a string of pickups and
- * rockets, and either lands on the finish carrier — paying what it collected —
- * or ditches in the sea short of it.
- *
- * ── What is server-decided ─────────────────────────────────────────────────
- * All of it. BET goes to the game socket, and the server's engine
- * (apps/server/src/engines/avia.engine.ts) rolls the whole flight from the
- * round's committed seed and settles it through the ledger in the same frame.
- * GAME_RESULT carries every event and whether the flight lands; this component
- * lays that out (`planFlight`) and flies it. The landing chance is priced off
- * the pickup table so the round returns 97.5% — see AVIA in @frigat/shared.
- *
- * The result is known before take-off, so the panel shows the balance as it
- * stood at launch until the plane is down, rather than giving the ending away.
- *
- * Styling is injected CSS: this project ships no utility CSS framework, so a
- * class like `bg-[#0b1622]` would resolve to nothing.
- */
-
-
-// ─────────────────────────────────────────────
-// World objects
-// ─────────────────────────────────────────────
 
 interface Particle {
   x: number;
@@ -90,27 +61,19 @@ interface Particle {
   maxLife: number;
   hue: number;
   size: number;
-  /**
-   * Sparks are lit debris and fall under gravity; smoke is the damage trail,
-   * drifting back off the airframe, expanding and thinning as it goes.
-   */
   kind: 'spark' | 'smoke';
 }
 
-/** Call-out text that rises off the plane and fades. */
 interface Floater {
-  /** Screen coordinates, fixed at spawn — it marks where the event landed. */
   x: number;
   y: number;
   life: number;
   maxLife: number;
   text: string;
   sub: string;
-  /** Pickups call out in green, rockets and the splash in red. */
   good: boolean;
 }
 
-/** What the server settled, held until the plane is down to show it. */
 interface Settlement {
   landed: boolean;
   multiplier: number;
@@ -118,13 +81,8 @@ interface Settlement {
   spot: AviaSpotId | null;
 }
 
-/** The flat safe-landing fee, as a decimal string for exact maths. */
 const SAFE_FEE = AVIA.safeLanding.fee.toFixed(2);
 
-
-// ─────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────
 
 export default function AviaMasters() {
   const { t } = useLanguage();
@@ -135,25 +93,17 @@ export default function AviaMasters() {
   const [phase, setPhase] = useState<Phase>('IDLE');
   const [bet, setBet] = useState('10.00');
   const [mode, setMode] = useState<AviaMode>('fast');
-  /** Pay the flat fee for a guaranteed landing — small stakes only. */
   const [safe, setSafe] = useState(false);
   const modeRef = useRef<AviaMode>('fast');
   modeRef.current = mode;
-  // The render loop's call-outs are drawn on the canvas, outside React, so it
-  // reads the translator through a ref rather than restarting on a locale swap.
   const tRef = useRef(t);
   tRef.current = t;
   const [settled, setSettled] = useState<Settlement | null>(null);
-  /** Why the last Fly press was refused, if it was. */
   const [serverError, setServerError] = useState<string | null>(null);
-  /** The balance as it stood when Fly was pressed — shown until touchdown. */
   const [launchBalance, setLaunchBalance] = useState<string | null>(null);
 
-  /** Telemetry mirrored out of the loop for the HUD, at a readable rate. */
   const [hud, setHud] = useState({ altitude: 0, distance: 0, multiplier: 1 });
 
-  // The render loop reads refs, so it never restarts and never closes over a
-  // stale value.
   const phaseRef = useRef<Phase>('IDLE');
   const planRef = useRef<FlightPlan | null>(null);
   const resultRef = useRef<Settlement | null>(null);
@@ -161,9 +111,7 @@ export default function AviaMasters() {
   const altitudeRef = useRef<number>(ON_DECK);
   const distanceRef = useRef(0);
   const multiplierRef = useRef(1);
-  /** Index of the next event the plane has not reached yet. */
   const nextEventRef = useRef(0);
-  /** Seconds since each event was collected, for the pop; -1 while ahead. */
   const eventAgeRef = useRef<number[]>([]);
   const particlesRef = useRef<Particle[]>([]);
   const landingStartedRef = useRef<number | null>(null);
@@ -173,33 +121,18 @@ export default function AviaMasters() {
   const waveRef = useRef(0);
   const settleRoundRef = useRef<() => void>(() => {});
 
-  // ── Damage feedback ──
-  /** Seconds of red screen flash left after a hit. */
   const flashRef = useRef(0);
-  /** Seconds the engine keeps trailing smoke after a hit. */
   const smokeRef = useRef(0);
   const floatersRef = useRef<Floater[]>([]);
 
-  /** Rendered pitch in radians, eased toward the path's slope. */
   const pitchRef = useRef(0);
 
   const isAirborne = phase === 'WAITING' || phase === 'FLYING' || phase === 'LANDING';
   const isOver = phase === 'LANDED' || phase === 'CRASHED';
 
-  // ── Stake, checked against the wallet in exact decimal ──
-  //
-  // `safeBet` is what the decimal helpers see. The raw field passes through
-  // states they cannot parse — `""`, `"1."` on the way to `"1.5"` — and
-  // `Number.isNaN(Number(bet))` does not catch them: `Number("1.")` is 1, so
-  // the old guard waved a trailing dot straight into `compareDecimal`, which
-  // threw during render and took the board down.
-  // A safe landing caps the stake below a dollar, so it drops to the server's
-  // own minimum rather than the board's usual one.
   const minBet = safe ? BET_LIMITS.min : GAME_CONFIG.minBet;
   const safeBet = useMemo(() => safeDecimal(bet, minBet), [bet, minBet]);
-  /** The largest stake a safe landing covers at this speed — the server's cap. */
   const safeCap = useMemo(() => toFixedDecimal(String(aviaSafeLandingMaxStake(mode)), 2), [mode]);
-  /** What leaves the wallet: the stake, plus the fee on a safe landing. */
   const charged = useMemo(
     () => (safe ? fromUnits(toUnits(safeBet) + toUnits(SAFE_FEE)) : safeBet),
     [safe, safeBet]
@@ -216,17 +149,12 @@ export default function AviaMasters() {
     if (safe && compareDecimal(safeBet, safeCap) > 0) {
       return t('gameUi.aviaSafeCap', { amount: `$${safeCap}` });
     }
-    // Only meaningful once a balance has actually arrived; before that the
-    // wallet is unknown rather than empty, and blocking play on "unknown" would
-    // lock the board on a slow socket.
     if (balance.hasSynced && balance.balance && compareDecimal(charged, balance.balance) > 0) {
       return t('gameUi.aviaNoBalance');
     }
     return null;
   }, [bet, safeBet, minBet, safe, safeCap, charged, balance.hasSynced, balance.balance, t]);
 
-  // What the flight would pay right now. Once it has ditched it pays nothing,
-  // whatever it collected on the way down.
   const payout = useMemo(
     () => (phase === 'CRASHED' ? '0' : payoutFor(safeBet, hud.multiplier)),
     [phase, safeBet, hud.multiplier]
@@ -237,7 +165,6 @@ export default function AviaMasters() {
     setPhase(next);
   }, []);
 
-  // ── Particles ──
   const burst = useCallback((x: number, y: number, count: number, hue: number) => {
     for (let i = 0; i < count; i += 1) {
       const angle = Math.random() * Math.PI * 2;
@@ -256,12 +183,10 @@ export default function AviaMasters() {
     }
   }, []);
 
-  /** One puff off the engine. Called every frame while the plane is smoking. */
   const emitSmoke = useCallback((x: number, y: number) => {
     particlesRef.current.push({
       x: x - 4 + Math.random() * 6,
       y: y + Math.random() * 6 - 3,
-      // Drifts back and slightly up, the way a trail hangs behind an airframe.
       vx: -70 - Math.random() * 60,
       vy: -14 - Math.random() * 22,
       life: 0,
@@ -272,13 +197,6 @@ export default function AviaMasters() {
     });
   }, []);
 
-  /**
-   * Everything a bomb hit does that the player should *see*: a red flash, a
-   * shake, sparks, a smoking engine, and the damage called out in words above
-   * the plane. Kept in one place so the visual and the mechanical penalty can
-   * never drift apart — and it is called from exactly one place, the bounding
-   * box test, so nothing else can shake the screen.
-   */
   const registerHit = useCallback(
     (screenX: number, screenY: number, multiplierLost: number) => {
       flashRef.current = 0.32;
@@ -291,7 +209,6 @@ export default function AviaMasters() {
         life: 0,
         maxLife: 1.15,
         text: tRef.current('gameUi.aviaCallBomb'),
-        // The honest number: what the hit actually took off the multiplier.
         sub: `−${multiplierLost.toFixed(2)}x`,
         good: false,
       });
@@ -299,10 +216,7 @@ export default function AviaMasters() {
     [burst]
   );
 
-  // ── Round flow ──
   const { busy, settle: releaseControls, bet: placeBet } = useGameRound('AVIA', {
-    // The flight plays out after the frame lands; the controls stay locked
-    // until the plane is down, or a second bet would take off mid-flight.
     autoSettle: false,
     onResult: ({ raw }) => {
       if (phaseRef.current !== 'WAITING') return;
@@ -330,7 +244,6 @@ export default function AviaMasters() {
     },
   });
 
-  /** The plane is down: reveal what the server settled and free the controls. */
   const settleRound = useCallback(() => {
     const result = resultRef.current;
     if (!result) return;
@@ -372,7 +285,6 @@ export default function AviaMasters() {
     });
   }, [betError, busy, balance.balance, balance.currency, placeBet, safeBet, mode, safe, setPhaseBoth]);
 
-  /** The board, Space and Enter all do one thing: launch when grounded. */
   const onCanvasPointerDown = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
       event.preventDefault();
@@ -384,7 +296,6 @@ export default function AviaMasters() {
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       if (event.key !== ' ' && event.key !== 'Enter') return;
-      // Leave Space and Enter alone in the stake field and on buttons.
       const target = event.target as HTMLElement | null;
       if (target && /^(INPUT|TEXTAREA|BUTTON|SELECT)$/.test(target.tagName)) return;
       event.preventDefault();
@@ -394,7 +305,6 @@ export default function AviaMasters() {
     return () => window.removeEventListener('keydown', down);
   }, [launch]);
 
-  // ── Renderer ──
   const draw = useCallback(
     ({ ctx, width, height, delta }: CanvasFrame) => {
       const dt = Math.min(delta, 50) / 1000;
@@ -403,14 +313,11 @@ export default function AviaMasters() {
       const seaY = height * 0.84;
       const skyTop = height * 0.1;
       const scale = Math.max(4, Math.min(9, height / 52));
-      /** Screen x the plane is pinned to; the world scrolls past it. */
       const planeX = width * 0.3;
-      /** Screen pixels per world metre. */
       const pxPerMetre = width / 620;
 
       const altToY = (alt: number) =>
         seaY - (alt / GAME_CONFIG.maxAltitude) * (seaY - skyTop);
-      /** The baseline every deck and the finish marker are drawn from. */
       const deckY = altToY(GAME_CONFIG.deckAltitude);
 
       const plan = planRef.current;
@@ -419,17 +326,14 @@ export default function AviaMasters() {
       const landing = phaseNow === 'LANDING' && plan !== null;
       waveRef.current += dt;
 
-      // ── Playback ──
       if (flying) {
         flightClockRef.current += dt;
-        // The catapult: ease up to cruise instead of leaving at full speed.
         const launchT = Math.min(1, flightClockRef.current / GAME_CONFIG.catapultSeconds);
         const speed = GAME_CONFIG.cruiseSpeed * paceFor(modeRef.current) * (0.35 + 0.65 * launchT);
         const before = distanceRef.current;
         distanceRef.current = Math.min(plan.endX, before + speed * dt);
         altitudeRef.current = altitudeAt(plan, distanceRef.current);
 
-        // Events are met in order; a long frame may pass more than one.
         while (
           nextEventRef.current < plan.events.length &&
           distanceRef.current >= plan.events[nextEventRef.current].x
@@ -476,8 +380,6 @@ export default function AviaMasters() {
             });
             setPhaseBoth('LANDING');
           } else {
-            // Short of the deck: the one way to lose, so it gets the full
-            // splash, a long shake and a call-out.
             altitudeRef.current = 0;
             burst(planeX, seaY, 34, 200);
             burst(planeX, seaY, 20, 40);
@@ -500,8 +402,6 @@ export default function AviaMasters() {
       if (landing && landingStartedRef.current !== null) {
         const t = Math.min(1, (now - landingStartedRef.current) / GAME_CONFIG.landingMs);
         const eased = 1 - Math.pow(1 - t, 3);
-        // Roll forward along the deck and stop, rather than freezing the
-        // instant the wheels touch.
         const rollout = (plan.spot?.length ?? GAME_CONFIG.carrierLength) * 0.4;
         distanceRef.current = plan.endX + rollout * eased;
         altitudeRef.current = ON_DECK;
@@ -514,9 +414,6 @@ export default function AviaMasters() {
         if (age >= 0) eventAgeRef.current[i] = age + dt;
       }
 
-      // Damage trail: the engine keeps smoking for a couple of seconds after a
-      // hit, so the plane carries visible evidence of it rather than the whole
-      // event being over inside one frame.
       if (smokeRef.current > 0) {
         smokeRef.current = Math.max(0, smokeRef.current - dt);
         if (flying) emitSmoke(planeX - 6, altToY(altitudeRef.current));
@@ -526,7 +423,6 @@ export default function AviaMasters() {
         particle.life += dt;
         particle.x += particle.vx * dt;
         particle.y += particle.vy * dt;
-        // Sparks fall; smoke is buoyant and just slows down.
         if (particle.kind === 'spark') particle.vy += 260 * dt;
         else {
           particle.vx *= 1 - 0.9 * dt;
@@ -540,7 +436,6 @@ export default function AviaMasters() {
 
       if (flashRef.current > 0) flashRef.current = Math.max(0, flashRef.current - dt);
 
-      // ── HUD, at a rate a human can read ──
       hudClockRef.current += dt;
       if (hudClockRef.current > 0.08) {
         hudClockRef.current = 0;
@@ -551,7 +446,6 @@ export default function AviaMasters() {
         });
       }
 
-      // ── Paint ──
       ctx.save();
       if (shakeRef.current > 0) {
         shakeRef.current = Math.max(0, shakeRef.current - dt);
@@ -559,11 +453,9 @@ export default function AviaMasters() {
         ctx.translate((Math.random() - 0.5) * power, (Math.random() - 0.5) * power);
       }
 
-      // Sky
       ctx.fillStyle = '#1d4e89';
       ctx.fillRect(-20, -20, width + 40, seaY + 20);
 
-      // Parallax clouds, tied to distance so they scroll with the run
       ctx.fillStyle = 'rgba(255,255,255,.10)';
       for (let i = 0; i < 7; i += 1) {
         const seedX = ((i * 613) % 1000) / 1000;
@@ -578,11 +470,9 @@ export default function AviaMasters() {
         ctx.fill();
       }
 
-      // Sea
       ctx.fillStyle = '#0e4a6b';
       ctx.fillRect(-20, seaY, width + 40, height - seaY + 20);
 
-      // Swell
       ctx.strokeStyle = 'rgba(148,197,231,.22)';
       ctx.lineWidth = 1.5;
       for (let i = 0; i < 5; i += 1) {
@@ -599,15 +489,11 @@ export default function AviaMasters() {
       const toScreenX = (x: number) => planeX + (x - distance) * pxPerMetre;
       const carrierPx = GAME_CONFIG.carrierLength * pxPerMetre;
 
-      // Launch carrier: the plane starts near its bow and it scrolls away.
       const launchX = toScreenX(-GAME_CONFIG.carrierLength * 0.85);
       if (launchX + carrierPx > -40) {
         drawCarrier(ctx, launchX, deckY, seaY, carrierPx, '#e0b055');
       }
 
-      // The landing spots, on the same baseline as the launch deck: carrier,
-      // island, oil rig — each tagged with its bonus. The one the flight comes
-      // down on carries the finish flag.
       if (plan) {
         for (const spot of plan.spots) {
           const left = toScreenX(spot.left);
@@ -624,8 +510,6 @@ export default function AviaMasters() {
         }
       }
 
-      // Pickups and rockets, where the path will meet them. Collected ones pop
-      // and fade; rockets that have gone off simply vanish into the smoke.
       if (plan) {
         for (const [i, event] of plan.events.entries()) {
           const x = toScreenX(event.x);
@@ -640,14 +524,7 @@ export default function AviaMasters() {
         }
       }
 
-      // Plane — banked by what the player is asking for, so input reads visually
       if (phaseNow !== 'CRASHED' || particlesRef.current.length > 0) {
-        // ── Pitch ──
-        // The nose follows the path's slope a few metres ahead, eased so a
-        // change of direction reads as a plane pulling up, not a flick. The
-        // slope is measured on screen, not in metres: the two axes are scaled
-        // differently, and a world-space angle points the nose several times
-        // steeper than the line the plane is visibly flying.
         let targetPitch = 0;
         if (plan && flying) {
           const rise = altToY(altitudeAt(plan, distance)) - altToY(altitudeAt(plan, distance + 25));
@@ -669,8 +546,6 @@ export default function AviaMasters() {
         );
       }
 
-      // Particles. Sparks shrink and brighten out; smoke expands and thins,
-      // which is what separates the two at a glance.
       for (const particle of particlesRef.current) {
         const t = particle.life / particle.maxLife;
         if (particle.kind === 'smoke') {
@@ -686,7 +561,6 @@ export default function AviaMasters() {
         }
       }
 
-      // Call-outs, rising and fading above the plane.
       for (const floater of floatersRef.current) {
         const t = floater.life / floater.maxLife;
         const rise = t * 34;
@@ -694,9 +568,6 @@ export default function AviaMasters() {
         ctx.globalAlpha = Math.max(0, 1 - t * t);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        // A dark stroke under the type: the sky behind it runs from pale blue
-        // to near-black depending on altitude, and red alone disappears against
-        // the top of that range.
         ctx.lineWidth = Math.max(2, scale * 0.5);
         ctx.strokeStyle = 'rgba(8,17,27,.85)';
         ctx.font = `900 ${scale * 2.1}px ui-sans-serif, system-ui, sans-serif`;
@@ -713,8 +584,6 @@ export default function AviaMasters() {
 
       ctx.restore();
 
-      // Impact flash. Outside the shake transform so the wash covers the whole
-      // canvas rather than sliding with it and leaving an unpainted edge.
       if (flashRef.current > 0) {
         ctx.fillStyle = `rgba(239,68,68,${(flashRef.current / 0.32) * 0.3})`;
         ctx.fillRect(0, 0, width, height);
@@ -725,7 +594,6 @@ export default function AviaMasters() {
 
   const canvasRef = useCanvasRenderer(draw, { maxPixelRatio: 3 });
 
-  // ── Stake controls ──
   const scaleBet = (factor: number) => {
     setBet((current) => {
       const value = Number(current || '0') * factor;
@@ -741,17 +609,11 @@ export default function AviaMasters() {
     setBet(toFixedDecimal(ceiling, 2));
   };
 
-  // Until the plane is down the panel shows the balance from take-off: the
-  // ledger has already settled the flight, and the live figure would give the
-  // ending away. It is still a ledger-reported value — nothing is computed.
   const shownBalance = isAirborne && launchBalance !== null ? launchBalance : balance.balance;
 
   return (
     <div className="avia neu">
-      {/* ---------- Stage ---------- */}
       <div className="avia__stage">
-        {/* A tap on the board launches when the plane is on deck. There is
-            nothing to steer: the flight is decided at take-off. */}
         <canvas
           ref={canvasRef}
           className="avia__canvas"
@@ -806,7 +668,6 @@ export default function AviaMasters() {
         </p>
       </div>
 
-      {/* ---------- Panel ---------- */}
       <div className="avia__panel">
         <div>
           <div className="avia__label">
@@ -866,8 +727,6 @@ export default function AviaMasters() {
               })}
             </b>
           </div>
-          {/* Faster planes meet more bombs and richer bubbles and land less
-              often; the edge is the same at every speed. */}
           <div className="avia__speeds">
             {SPEEDS.map((s) => (
               <button
@@ -899,8 +758,6 @@ export default function AviaMasters() {
             onChange={(event) => {
               const on = event.target.checked;
               setSafe(on);
-              // Bring the stake inside the cover rather than leaving the
-              // player to find the limit by hitting it.
               if (on && compareDecimal(safeBet, safeCap) > 0) setBet(safeCap);
             }}
           />
@@ -936,8 +793,6 @@ export default function AviaMasters() {
         )}
 
         {isAirborne ? (
-          // Not a button: one bet is one flight, and nothing can change it
-          // once the plane has left the deck.
           <div className="avia__standing" role="status">
             <span>
               {phase === 'WAITING'

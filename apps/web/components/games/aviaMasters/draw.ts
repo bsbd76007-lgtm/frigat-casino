@@ -1,18 +1,5 @@
-/**
- * Avia Masters — canvas painting.
- *
- * Every function here takes a context and draws. None of them advance the
- * simulation or decide an outcome, which is what keeps the round logic in the
- * component and makes this file safe to tune by eye.
- */
-
 import type { PickupSpec } from './config';
 
-// ─────────────────────────────────────────────
-// Painting
-// ─────────────────────────────────────────────
-
-/** The red vintage biplane, nose right, banked by its climb rate. */
 export function drawPlane(
   ctx: CanvasRenderingContext2D,
   cx: number,
@@ -25,10 +12,9 @@ export function drawPlane(
   ctx.translate(cx, cy);
   ctx.rotate(bank);
 
-  const L = scale * 4.6; // nose-to-tail
-  const H = scale * 1.15; // fuselage depth
+  const L = scale * 4.6;
+  const H = scale * 1.15;
 
-  // Tailplane
   ctx.fillStyle = '#dc2626';
   ctx.beginPath();
   ctx.moveTo(-L * 0.5, 0);
@@ -37,12 +23,10 @@ export function drawPlane(
   ctx.closePath();
   ctx.fill();
 
-  // Lower wing, drawn before the fuselage so the body sits on top
   ctx.fillStyle = '#e5e7eb';
   roundRect(ctx, -L * 0.12, H * 0.25, L * 0.5, H * 0.42, H * 0.2);
   ctx.fill();
 
-  // Fuselage
   ctx.fillStyle = '#dc2626';
   ctx.beginPath();
   ctx.moveTo(L * 0.52, 0);
@@ -54,11 +38,9 @@ export function drawPlane(
   ctx.closePath();
   ctx.fill();
 
-  // Upper wing
   ctx.fillStyle = '#f3f4f6';
   roundRect(ctx, -L * 0.18, -H * 1.55, L * 0.56, H * 0.4, H * 0.2);
   ctx.fill();
-  // Wing struts
   ctx.strokeStyle = 'rgba(15,23,42,.55)';
   ctx.lineWidth = Math.max(1, scale * 0.12);
   ctx.beginPath();
@@ -68,13 +50,11 @@ export function drawPlane(
   ctx.lineTo(L * 0.24, -H * 0.7);
   ctx.stroke();
 
-  // Cockpit
   ctx.fillStyle = 'rgba(15,23,42,.8)';
   ctx.beginPath();
   ctx.ellipse(L * 0.02, -H * 0.55, scale * 0.42, scale * 0.3, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Propeller disc — the blur is the phase, so it reads as spinning
   ctx.strokeStyle = 'rgba(250,204,21,.85)';
   ctx.lineWidth = Math.max(1, scale * 0.14);
   ctx.beginPath();
@@ -108,14 +88,6 @@ export function roundRect(
   ctx.closePath();
 }
 
-/**
- * An aircraft carrier seen side-on — the launch deck and the finish deck.
- *
- * `deckY` is the landing line itself: the top edge of the deck surface, where
- * the wheels sit. The deck is drawn *down* from it and the island *up* from it,
- * so every carrier and the finish marker, all drawn from the same baseline
- * altitude, line up to the pixel — whatever their size.
- */
 export function drawCarrier(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -126,7 +98,6 @@ export function drawCarrier(
 ) {
   const deckT = Math.max(3, (seaY - deckY) * 0.08);
 
-  // Hull, from under the deck down into the water.
   ctx.fillStyle = '#1e293b';
   ctx.beginPath();
   ctx.moveTo(x, deckY + deckT);
@@ -136,11 +107,9 @@ export function drawCarrier(
   ctx.closePath();
   ctx.fill();
 
-  // Deck surface, hanging from the landing line.
   ctx.fillStyle = '#334155';
   ctx.fillRect(x, deckY, width, deckT);
 
-  // Centreline markings.
   ctx.strokeStyle = accent;
   ctx.lineWidth = Math.max(1.5, width * 0.008);
   ctx.setLineDash([width * 0.05, width * 0.04]);
@@ -150,17 +119,12 @@ export function drawCarrier(
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Island superstructure, standing on the deck.
   const islandH = Math.max(10, (seaY - deckY) * 0.5);
   ctx.fillStyle = '#475569';
   roundRect(ctx, x + width * 0.7, deckY - islandH, width * 0.12, islandH, 2);
   ctx.fill();
 }
 
-/**
- * A runway island: a rock mass rising out of the sea to the landing line, with
- * a strip along its crown. Same baseline contract as `drawCarrier`.
- */
 export function drawIsland(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -171,7 +135,6 @@ export function drawIsland(
 ) {
   const stripT = Math.max(3, (seaY - deckY) * 0.07);
 
-  // Rock, widening into the water.
   ctx.fillStyle = '#4b5d3a';
   ctx.beginPath();
   ctx.moveTo(x + width * 0.04, deckY + stripT);
@@ -180,11 +143,9 @@ export function drawIsland(
   ctx.lineTo(x - width * 0.08, seaY + 4);
   ctx.closePath();
   ctx.fill();
-  // Sand where it meets the sea.
   ctx.fillStyle = '#c9b27c';
   ctx.fillRect(x - width * 0.08, seaY - 3, width * 1.16, 7);
 
-  // Runway and its dashes.
   ctx.fillStyle = '#3f4652';
   ctx.fillRect(x, deckY, width, stripT);
   ctx.strokeStyle = accent;
@@ -196,7 +157,6 @@ export function drawIsland(
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // A palm, so it reads as an island at a glance.
   const trunkH = Math.max(10, (seaY - deckY) * 0.45);
   const tx = x + width * 0.82;
   ctx.fillStyle = '#7c5a3a';
@@ -209,10 +169,6 @@ export function drawIsland(
   }
 }
 
-/**
- * An oil rig: a helideck on the landing line, standing on legs in the sea.
- * The smallest target, and the richest.
- */
 export function drawRig(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -223,7 +179,6 @@ export function drawRig(
 ) {
   const deckT = Math.max(3, (seaY - deckY) * 0.08);
 
-  // Legs and cross-bracing.
   ctx.strokeStyle = '#64748b';
   ctx.lineWidth = Math.max(2, width * 0.03);
   for (const f of [0.12, 0.88]) {
@@ -240,7 +195,6 @@ export function drawRig(
   ctx.lineTo(x + width * 0.12, seaY);
   ctx.stroke();
 
-  // Helideck with its H.
   ctx.fillStyle = '#334155';
   ctx.fillRect(x, deckY, width, deckT);
   ctx.fillStyle = accent;
@@ -249,7 +203,6 @@ export function drawRig(
   ctx.textBaseline = 'middle';
   ctx.fillText('H', x + width / 2, deckY + deckT / 2);
 
-  // Derrick.
   const derrickH = Math.max(12, (seaY - deckY) * 0.7);
   ctx.strokeStyle = '#94a3b8';
   ctx.lineWidth = Math.max(1, width * 0.012);
@@ -260,7 +213,6 @@ export function drawRig(
   ctx.stroke();
 }
 
-/** The bonus a landing spot pays, flown on a tag above it. */
 export function drawSpotTag(
   ctx: CanvasRenderingContext2D,
   centreX: number,
@@ -287,10 +239,6 @@ export function drawSpotTag(
   ctx.restore();
 }
 
-/**
- * Chequered finish flag. Its foot is `deckY` — the same landing line the
- * carriers are drawn from — so it stands on the deck, never above or in it.
- */
 export function drawFinishMarker(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -307,7 +255,6 @@ export function drawFinishMarker(
   ctx.fillStyle = '#e2e8f0';
   ctx.fillRect(x - scale * 0.25, deckY - poleH, scale * 0.5, poleH);
 
-  // The cloth ripples; the pole and its foot never move.
   const top = deckY - poleH;
   for (let c = 0; c < cells; c += 1) {
     for (let r = 0; r < 3; r += 1) {
@@ -320,7 +267,6 @@ export function drawFinishMarker(
   ctx.restore();
 }
 
-/** A pickup badge: the label is the whole point, so it leads. */
 export function drawPickup(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -329,7 +275,6 @@ export function drawPickup(
   spec: PickupSpec,
   age: number
 ) {
-  // Collected badges pop and fade rather than vanishing on the frame they land.
   const pop = age > 0 ? 1 + age * 3 : 1;
   const alpha = age > 0 ? Math.max(0, 1 - age * 3.5) : 1;
   if (alpha <= 0) return;
@@ -365,12 +310,6 @@ export function drawPickup(
   ctx.restore();
 }
 
-/**
- * A floating mine: dark sphere, spikes, and a slow blinking fuse light.
- *
- * Deliberately unlike the old missile — nothing about it should read as
- * "incoming". It is scenery the player flies into.
- */
 export function drawBomb(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -383,7 +322,6 @@ export function drawBomb(
   ctx.save();
   ctx.translate(x, y);
 
-  // Spikes first, so the body caps them.
   ctx.strokeStyle = '#475569';
   ctx.lineWidth = Math.max(1.4, scale * 0.34);
   ctx.lineCap = 'round';
@@ -403,8 +341,6 @@ export function drawBomb(
   ctx.lineWidth = Math.max(1, scale * 0.2);
   ctx.stroke();
 
-  // Fuse light — the one warm thing on it, so a bomb is legible against a dark
-  // sky at small sizes.
   const pulse = 0.55 + Math.sin(phase * 3.2) * 0.45;
   ctx.fillStyle = `rgba(239,68,68,${pulse})`;
   ctx.beginPath();

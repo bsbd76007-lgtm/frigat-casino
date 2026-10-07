@@ -45,7 +45,6 @@ describe('plinko — path and bucket', () => {
     }
   });
 
-  /** The bucket *is* the count of rights — the invariant the payout indexes on. */
   it('lands in the bucket its path implies', () => {
     for (let n = 0; n < 60; n += 1) {
       const { resultData } = drop({ rows: 16, risk: 'HIGH' }, ctx(n));
@@ -108,16 +107,6 @@ describe('plinko — payouts', () => {
   });
 });
 
-/**
- * Plinko's payouts are a hardcoded table, and `HOUSE_EDGE.PLINKO` does not feed
- * the engine — it only feeds `/api/games/rtp`, which publishes the figure to
- * players. So the table and the constant can drift apart silently, and the
- * visible symptom is the API quoting an RTP the game does not pay.
- *
- * This is the guard. Every board is enumerated exactly (a ball's path is
- * `rows` independent coin flips, so bucket k has probability C(rows,k)/2^rows)
- * — no sampling, no seed, no tolerance for luck.
- */
 describe('plinko — RTP calibration', () => {
   function binomial(rows: number, k: number): number {
     let c = 1;
@@ -141,8 +130,6 @@ describe('plinko — RTP calibration', () => {
   });
 
   it('every board is symmetric', () => {
-    // A left hop and a right hop are equally likely, so an asymmetric table
-    // would pay one side of the board better for no reason a player could see.
     for (const risk of RISKS) {
       for (const rows of PLINKO_ROWS) {
         const t = PLINKO_TABLES[risk][rows];

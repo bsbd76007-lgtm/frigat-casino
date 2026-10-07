@@ -17,7 +17,7 @@ interface UsersResponse {
 }
 
 async function loadUsers(q: string, skip: number) {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const base = API_URL;
   const search = new URLSearchParams({ take: '25', skip: String(skip) });
   if (q) search.set('q', q);
@@ -35,10 +35,11 @@ async function loadUsers(q: string, skip: number) {
 }
 
 export default async function UsersPage({
-  searchParams,
+  searchParams: pendingSearchParams,
 }: {
-  searchParams: { q?: string; skip?: string };
+  searchParams: Promise<{ q?: string; skip?: string }>;
 }) {
+  const searchParams = await pendingSearchParams;
   const q = (searchParams.q ?? '').trim();
   const skip = Math.max(0, Number(searchParams.skip) || 0);
   const result = await loadUsers(q, skip);

@@ -1,21 +1,3 @@
-/**
- * FRIGAT — WebSocket Server & Message Router
- *
- * Authenticates each connection (JWT), then routes client actions to the right
- * engine and streams authoritative state back:
- *
- *   BET         instant games (DICE/COINFLIP/ROULETTE/PLINKO) → resolve + settle
- *               MINES → debit + generate layout, start a game
- *               CRASH → join the current round (debit only)
- *   SPIN        alias of BET for ROULETTE / COINFLIP
- *   REVEAL_TILE MINES → reveal a tile, bust or continue
- *   CASHOUT     MINES → settle at current multiplier
- *               CRASH → settle at live round multiplier (if before crash)
- *
- * All balance changes flow through the ledger service ($transaction). Engines
- * never touch the database.
- */
-
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
 import { Prisma } from '@prisma/client';
@@ -60,25 +42,10 @@ const connectionMeta = new Map<WebSocket, {
   username: string;
   role: 'USER' | 'ADMIN';
   rooms: Set<string>;
-  /** Cleared before each ping, set again by the client's pong. */
   alive: boolean;
-  /**
-   * True once the database has confirmed tokenVersion, role and frozen for this
-   * connection. Until then the socket may receive but must not act.
-   */
   verified: boolean;
 }>();
 
-/**
- * How often to ping every socket. A client that has not ponged since the
- * previous sweep is treated as gone.
- *
- * Without this, presence only ever grows. `ws` raises 'close' on a clean
- * disconnect or a TCP reset the OS actually notices — a slept laptop, a
- * dropped wifi link or a phone switching networks leaves the socket
- * half-open, and the entry would sit in `connectionMeta` until TCP keepalive
- * expires, which is measured in hours.
- */
 const HEARTBEAT_MS = 30_000;
 
 const roomMembers = new Map<string, Set<WebSocket>>();
@@ -89,15 +56,6 @@ export function activeSocketCount(): number {
   return open;
 }
 
-/**
- * Unique signed-in players, not raw connections: a user with three tabs open
- * holds three sockets and counts once. Derived from live state on every read
- * rather than kept as a running total, so it cannot drift out of step with
- * reality and cannot go negative.
- *
- * A socket mid-close still sits in the map until its 'close' event lands, so
- * only OPEN ones are counted.
- */
 export function onlinePlayerCount(): number {
   const players = new Set<string>();
   for (const [ws, meta] of connectionMeta) {
@@ -106,24 +64,12 @@ export function onlinePlayerCount(): number {
   return players.size;
 }
 
-/**
- * Forgets a connection. Idempotent — 'close', 'error' and the heartbeat can
- * all reach the same socket, and a user stays online until their last one
- * goes, because presence is derived from what remains here.
- */
 function releaseSocket(ws: WebSocket) {
   sockets.delete(ws);
   leaveAllRooms(ws);
   connectionMeta.delete(ws);
 }
 
-/**
- * Delivers a support frame to the ticket's owner and to every signed-in admin.
- *
- * Two audiences, one call: the player watching their own thread, and whichever
- * admins have the queue open. A guest ticket has no userId, so it reaches the
- * admin side only — there is no socket to deliver it to until they sign in.
- */
 export function pushSupportEvent(
   type: 'SUPPORT_MESSAGE' | 'SUPPORT_TICKET',
   data: Record<string, unknown>,
@@ -147,11 +93,6 @@ export function pushBalanceToUser(userId: string, balance: string) {
 function send(ws: WebSocket, msg: ServerMessage) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
-/**
- * Sends to every socket a user has open. Single-player game frames are
- * addressed this way rather than broadcast, and a player with the game open in
- * two tabs must see the same round in both.
- */
 function sendToUser(userId: string, msg: ServerMessage) {
   const payload = JSON.stringify(msg);
   for (const [ws, meta] of connectionMeta) {
@@ -209,11 +150,6 @@ function userLabel(email: string): string {
   return prefix.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 20) || 'player';
 }
 
-/**
- * Crash rounds are per-player, so every frame is addressed to the one player
- * who owns the round — a tick is not a broadcast. `settleCrashBust` runs when
- * a round reaches its crash point without a cash-out.
- */
 const crashManager = new CrashRoundManager(
   (round) =>
     sendToUser(round.userId, {
@@ -223,15 +159,6 @@ const crashManager = new CrashRoundManager(
   (round) => settleCrashBust(round)
 );
 
-// ─────────────────────────────────────────────
-// RevShare accrual
-//
-// Called at every point a wager reaches its final outcome. Deliberately NOT
-// awaited into the player's result path: their stake and payout are already
-// committed and correct, so a failure in affiliate accounting must not turn a
-// settled round into a client-visible error. settleAffiliateReward is
-// idempotent on betId, so a lost accrual can be replayed safely.
-// ─────────────────────────────────────────────
 let logError: (obj: Record<string, unknown>, msg: string) => void = () => {};
 
 function accrueAffiliate(input: {
@@ -250,9 +177,6 @@ function accrueAffiliate(input: {
   });
 }
 
-// ─────────────────────────────────────────────
-// Money helper: payout = betAmount * multiplier (Decimal, floored to 8dp)
-// ─────────────────────────────────────────────
 async function payoutOf(
   gameType: string,
   betAmount: string,
@@ -385,8 +309,6 @@ async function handleInstantBet(
   const currency = String(payload.currency ?? 'USD');
   let params = (payload.params as Record<string, unknown>) ?? payload;
 
-  // What is debited. Normally the stake; an Avia safe landing adds its fee.
-  // Payouts are always priced off `amount` — the stake — never off this.
   let charged = amount;
 
   if (gameType === 'AVIA') {
@@ -394,9 +316,6 @@ async function handleInstantBet(
     if (!avia.isAviaMode(mode)) return fail(ws, `Unknown Avia mode: ${String(mode)}`, 'BAD_REQUEST');
     const safe = params.safe === true;
     if (safe) {
-      // The fee is flat, so a guaranteed landing is only priced for the house
-      // up to this stake — see AVIA.safeLanding in @frigat/shared. The client
-      // shows the cap, but only this check enforces it.
       const cap = avia.safeLandingMaxStake(mode);
       let stake: Prisma.Decimal;
       try {
@@ -413,29 +332,17 @@ async function handleInstantBet(
       }
       charged = stake.plus(AVIA.safeLanding.fee).toFixed(2);
     }
-    // Rebuilt rather than passed through, so nothing else the client sent can
-    // reach the engine.
     params = { mode, safe };
   }
 
-  // 1) Debit the stake (and any fee) atomically.
   const bet = await processBet({ userId, amount: charged, gameType, currency });
 
-  // 2) Resolve the outcome against a fresh, nonce-advanced seed.
   const seed = await nextSeedContext(userId);
   const engine = INSTANT_ENGINES[gameType as keyof typeof INSTANT_ENGINES];
   const result = engine(params, seed);
 
-  // 3) Credit winnings (if any) atomically.
   let balance = bet.balance;
   let payout = '0';
-  // Gate on the MULTIPLIER, never on `result.win`. `win` is a display flag and
-  // each engine defines it differently — plinko sets `multiplier > 1`, roulette
-  // `totalReturn > totalStake`. Using it here settled every multiplier of 1.0 or
-  // below as a total loss: a plinko centre bucket paying 0.5x credited nothing
-  // (LOW/16 paid 54% RTP against an intended 99%), and a roulette bet covering
-  // all three dozens lost the whole stake on 36 of 37 pockets instead of
-  // breaking even. Anything with a positive multiplier is owed a payout.
   if (result.multiplier > 0) {
     payout = await payoutOf(gameType, amount, result.multiplier);
     const credited = await processWin({
@@ -449,8 +356,6 @@ async function handleInstantBet(
 
   accrueAffiliate({ gameType: gameType, userId, betId: bet.transactionId, stake: charged, payout, currency });
 
-  // 4) Persist the game session for history / audit. The bet amount is what
-  // was paid in, fee included, so RTP read from sessions stays honest.
   const session = await prisma.gameSession.create({
     data: {
       userId,
@@ -466,7 +371,6 @@ async function handleInstantBet(
     select: { id: true },
   });
 
-  // 5) Stream authoritative result to the player.
   send(ws, {
     type: 'GAME_RESULT',
     data: {
@@ -509,11 +413,6 @@ async function handleMinesStart(
   const currency = String(payload.currency ?? 'USD');
   const minesCount = Number((payload.params as any)?.minesCount ?? payload.minesCount);
 
-  // Validate BEFORE the debit. generateLayout throws on a minesCount outside
-  // [5,24], and it used to throw after processBet had already taken the stake
-  // and after nextSeedContext had burned a nonce — leaving the player short with
-  // no game recorded, no GameSession row and no refund path. A bad param must
-  // cost nothing.
   try {
     mines.assertValidMinesCount(minesCount);
   } catch (err) {
@@ -709,18 +608,6 @@ async function handleMinesCashout(
   });
 }
 
-// ── Chicken Road ──
-//
-// Same shape as mines: the stake is taken at BET, the seed's bust lane is fixed
-// at the same moment, and each STEP only reads it. Every state change a second
-// frame could race is made synchronously, before the first await — a double
-// STEP cannot skip a lane and a double CASHOUT cannot pay twice.
-
-/**
- * Starts in flight, before their state exists. `processBet` and the seed lookup
- * both await, so two BET frames sent back to back would each pass the "no
- * active round" check and debit twice for one round.
- */
 const chickenStartsInFlight = new Set<string>();
 
 async function handleChickenStart(
@@ -737,7 +624,6 @@ async function handleChickenStart(
   const params = (payload.params ?? {}) as Record<string, unknown>;
   const mode = params.mode;
 
-  // Validate before the debit, so a bad param costs nothing.
   if (!chicken.isChickenMode(mode)) {
     return fail(ws, 'Unknown traffic mode', 'BAD_PARAMS');
   }
@@ -835,7 +721,6 @@ async function handleChickenStep(ws: WebSocket, userId: string) {
 
   state.lane = lane;
 
-  // The end of the road is a cashout, not a choice.
   if (lane >= state.maxLanes) {
     return settleChickenCashout(ws, state, true);
   }
@@ -849,12 +734,6 @@ async function handleChickenStep(ws: WebSocket, userId: string) {
   });
 }
 
-/**
- * Re-attaches a page to a round the server is still holding — after a reload,
- * a second tab or a reconnect. Without it the stake is stranded: the server
- * refuses a new BET while the round is active, and a fresh page has no round
- * to cash out of.
- */
 function handleChickenResume(ws: WebSocket, userId: string) {
   const state = gameState.getChicken(userId);
   if (!state || !state.active) {
@@ -882,8 +761,6 @@ async function handleChickenCashout(ws: WebSocket, userId: string) {
   if (!state || !state.active) {
     return fail(ws, 'No active chicken round', 'NO_ACTIVE_GAME');
   }
-  // Server-side, like every rule that touches money: the board disables the
-  // button too, but a player can send CASHOUT by hand.
   const unlocksAt = chicken.minCashoutLane(state.mode);
   if (state.lane < unlocksAt) {
     return fail(
@@ -896,8 +773,6 @@ async function handleChickenCashout(ws: WebSocket, userId: string) {
 }
 
 async function settleChickenCashout(ws: WebSocket, state: ChickenState, auto: boolean) {
-  // Closed before the first await: a second CASHOUT arriving mid-settlement
-  // finds no active round rather than a second payout.
   state.active = false;
 
   const multiplier = chicken.multiplierAt(state.mode, state.lane);
@@ -912,7 +787,6 @@ async function settleChickenCashout(ws: WebSocket, state: ChickenState, auto: bo
       currency: state.currency,
     });
   } catch (err) {
-    // Nothing was credited, so the round is still the player's to cash out.
     state.active = true;
     throw err;
   }
@@ -972,12 +846,6 @@ async function settleChickenCashout(ws: WebSocket, state: ChickenState, auto: bo
   });
 }
 
-/**
- * Bets being placed right now, before their round exists in the manager.
- * `processBet` and the seed lookup both await, and two BET frames sent back to
- * back would each pass the "no round running" check during that gap and debit
- * the player twice for one round. Held synchronously, so there is no window.
- */
 const crashBetsInFlight = new Set<string>();
 
 async function handleCrashBet(
@@ -1003,11 +871,6 @@ async function handleCrashBet(
   try {
     const bet = await processBet({ userId, amount, gameType: 'CRASH', currency });
 
-    // The crash point comes from the player's active seed pair, whose hash was
-    // published when the pair was created and whose nonce advances once per
-    // bet. Resolving it here — after the debit, as every other game in this
-    // file does — cannot bias the outcome: the server seed is already
-    // committed and the nonce is not ours to choose.
     const seed = await nextSeedContext(userId);
     const crashPoint = computeCrashPoint(seed);
 
@@ -1035,7 +898,6 @@ async function handleCrashBet(
     });
     send(ws, { type: 'BALANCE', data: { balance: bet.balance } });
 
-    // The curve starts on the player's click; there is no betting window.
     sendToUser(userId, {
       type: 'CRASH_ROUND_START',
       data: {
@@ -1051,11 +913,6 @@ async function handleCrashBet(
   }
 }
 
-/**
- * Replays a live round to a reconnecting client: the round lives on the
- * server, a reload wipes the page's copy, and without this the player is left
- * with a debited stake and no way to send CASHOUT before the round busts.
- */
 function handleCrashResume(ws: WebSocket, userId: string) {
   const round = crashManager.get(userId);
   const bet = gameState.getCrashBet(userId);
@@ -1089,8 +946,6 @@ function handleCrashResume(ws: WebSocket, userId: string) {
     },
   });
 
-  // Restores the curve mid-flight, which CRASH_ROUND_START alone would leave
-  // sitting at 1.00×.
   send(ws, {
     type: 'CRASH_TICK',
     data: {
@@ -1116,10 +971,6 @@ async function handleCrashCashout(ws: WebSocket, userId: string) {
     return fail(ws, 'Too late — already crashed', 'ALREADY_CRASHED');
   }
 
-  // Stop the curve first, synchronously. The round is over at the instant the
-  // player takes it, so nothing ticks past the multiplier they were paid and a
-  // second CASHOUT finds no round. Marking the bet settled in the same breath
-  // closes the double-payout window across the awaits below.
   crashManager.end(userId);
   bet.cashedOutAt = multiplier;
   bet.settled = true;
@@ -1130,8 +981,6 @@ async function handleCrashCashout(ws: WebSocket, userId: string) {
       roundId: round.roundId,
       cashedOut: true,
       multiplier,
-      // Where the curve would have gone. Safe once the round is settled, and
-      // it keeps the round in the history strip, which keys off crashPoint.
       crashPoint: round.crashPoint,
     },
   });
@@ -1185,7 +1034,6 @@ async function handleCrashCashout(ws: WebSocket, userId: string) {
   });
 }
 
-/** The round reached its crash point with the stake still on the table. */
 async function settleCrashBust(round: CrashRound) {
   const { userId } = round;
   const bet = gameState.getCrashBet(userId);
@@ -1209,8 +1057,6 @@ async function settleCrashBust(round: CrashRound) {
     data: {
       gameType: 'CRASH',
       win: false,
-      // The realised multiplier is 0 — the player took nothing. The crash
-      // point rides alongside it, the way Mines carries its reveal.
       multiplier: 0,
       crashPoint: round.crashPoint,
       payout: '0',
@@ -1234,12 +1080,6 @@ async function settleCrashBust(round: CrashRound) {
   });
 }
 
-/**
- * Writes the round to game history. The shared-round game never recorded one:
- * a round belonged to many players at once, so it fitted no single row. A
- * per-player round does, which is also what makes it verifiable later — the
- * seed and nonce here are what a player replays against the revealed pair.
- */
 async function recordCrashSession(input: {
   round: CrashRound;
   betAmount: string;
@@ -1328,32 +1168,19 @@ export function registerSocketServer(app: FastifyInstance) {
     connectionMeta.set(ws, {
       userId: identity.userId,
       username: publicHandle(identity.userId),
-      // Provisional. verifyConnection replaces this with the role from the
-      // database before the connection is allowed to act; until then the
-      // connection is USER, so a stale ADMIN claim buys nothing even in the
-      // window before verification resolves.
       role: 'USER',
       rooms: new Set(),
       alive: true,
       verified: false,
     });
 
-    // The client's reply to our ping is the only proof it is still there.
     ws.on('pong', () => {
       const meta = connectionMeta.get(ws);
       if (meta) meta.alive = true;
     });
 
-    // An errored socket does not always reach 'close'; releasing here keeps a
-    // broken connection from being counted as a player forever.
     ws.on('error', () => releaseSocket(ws));
 
-    // One authoritative lookup replaces the two fire-and-forget ones that used
-    // to sit here. It settles tokenVersion, role and frozen together, and only
-    // once it resolves is the connection allowed to act — the message handler
-    // refuses anything that arrives before `verified` flips. Previously the
-    // freeze check raced the first message, so a frozen account could get a
-    // /tip away in the gap.
     verifyConnection(identity)
       .then((account) => {
         const meta = connectionMeta.get(ws);
@@ -1383,9 +1210,6 @@ export function registerSocketServer(app: FastifyInstance) {
 
       try {
         const meta = connectionMeta.get(ws);
-        // Anything arriving before the database has confirmed the session is
-        // refused rather than queued: the client can retry, and a token that
-        // turns out to be superseded never gets to act on the gap.
         if (!meta?.verified) {
           return fail(ws, 'Connection is still authenticating', 'NOT_READY');
         }
@@ -1413,12 +1237,6 @@ export function registerSocketServer(app: FastifyInstance) {
     ws.on('close', () => releaseSocket(ws));
   });
 
-  /**
-   * Liveness sweep. Any socket that has not ponged since the last pass is
-   * assumed gone and terminated; `terminate` raises 'close', so the ordinary
-   * cleanup path runs and the player leaves the presence count as soon as
-   * their last connection does.
-   */
   const heartbeat = setInterval(() => {
     for (const ws of sockets) {
       const meta = connectionMeta.get(ws);
@@ -1440,11 +1258,8 @@ export function registerSocketServer(app: FastifyInstance) {
       }
     }
   }, HEARTBEAT_MS);
-  // Node would hold the process open for this timer alone otherwise.
   heartbeat.unref?.();
 
-  // No round loop is started here. Crash rounds are per-player and begin only
-  // when that player sends BET; an idle server runs no crash timers at all.
   app.addHook('onClose', async () => {
     clearInterval(heartbeat);
     crashManager.stopAll();

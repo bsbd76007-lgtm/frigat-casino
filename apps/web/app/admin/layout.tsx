@@ -1,15 +1,3 @@
-/**
- * FRIGAT — Admin shell
- *
- * Server component. It re-verifies the session cookie rather than trusting that
- * middleware ran: middleware is matcher-driven configuration, and a matcher
- * mistake must not silently expose the admin tree. Verifying in both places
- * means the guard survives a routing refactor.
- *
- * Deliberately does NOT mount GameSocketProvider — admin staff should not be
- * opening a player game socket, and the two token stores stay separate.
- */
-
 import type { ReactNode } from 'react';
 import { cookies } from 'next/headers';
 
@@ -29,7 +17,7 @@ export const metadata = {
 };
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
-  const session = await verifySession(cookies().get(SESSION_COOKIE)?.value);
+  const session = await verifySession((await cookies()).get(SESSION_COOKIE)?.value);
 
   const serverUser: GateUser | null =
     session.status === 'valid' || session.status === 'forbidden'

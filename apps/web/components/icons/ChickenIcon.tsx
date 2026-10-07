@@ -26,7 +26,6 @@ export function ChickenIcon({ size = 48, title, ...rest }: GameIconProps) {
         </filter>
       </defs>
 
-      {/* Road */}
       <rect x="4" y="30" width="40" height="14" rx="2" fill="#161a22" />
       <path
         d="M6 37h6M17 37h6M28 37h6M39 37h4"
@@ -36,7 +35,6 @@ export function ChickenIcon({ size = 48, title, ...rest }: GameIconProps) {
         opacity=".8"
       />
 
-      {/* Chicken */}
       <g filter={`url(#${glow})`}>
         <ellipse cx="23" cy="20" rx="9" ry="10" fill="#f2f5f8" />
         <ellipse cx="25.5" cy="11" rx="6" ry="5.6" fill="#f2f5f8" />
