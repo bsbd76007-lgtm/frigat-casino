@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
 import { Prisma } from '@prisma/client';
@@ -113,8 +114,10 @@ function broadcastRoom(room: string, type: string, data: Record<string, unknown>
     if (ws.readyState === ws.OPEN) ws.send(payload);
   }
 }
-function fail(ws: WebSocket, message: string, code = 'BAD_REQUEST') {
-  send(ws, { type: 'ERROR', data: { code, message } });
+const frameGame = new AsyncLocalStorage<string>();
+
+function fail(ws: WebSocket, message: string, code = 'BAD_REQUEST', gameType = frameGame.getStore()) {
+  send(ws, { type: 'ERROR', data: { code, message, ...(gameType ? { gameType } : {}) } });
 }
 
 function joinRoom(ws: WebSocket, room: string) {
@@ -605,6 +608,32 @@ async function handleMinesCashout(
     betAmount: state.betAmount,
     multiplier,
     payout,
+  });
+}
+
+async function handleMinesResume(ws: WebSocket, userId: string) {
+  const state = gameState.getMines(userId);
+  if (!state || !state.active) {
+    return send(ws, { type: 'RESUME_NONE', data: { gameType: 'MINES' } });
+  }
+  const multiplier = mines.multiplierAfter(state.layout.minesCount, state.revealed.length);
+  const potentialPayout =
+    state.revealed.length > 0 ? await payoutOf('MINES', state.betAmount, multiplier) : null;
+  send(ws, {
+    type: 'BET_ACCEPTED',
+    data: {
+      gameType: 'MINES',
+      resumed: true,
+      amount: state.betAmount,
+      minesCount: state.layout.minesCount,
+      gridSize: 25,
+      revealed: state.revealed,
+      multiplier,
+      potentialPayout,
+      hashedServerSeed: state.seed.hashedServerSeed,
+      clientSeed: state.seed.clientSeed,
+      nonce: state.seed.nonce,
+    },
   });
 }
 
@@ -1132,6 +1161,7 @@ async function route(ws: WebSocket, userId: string, msg: ClientMessage, username
     case 'RESUME':
       if (gameType === 'CRASH') return handleCrashResume(ws, userId);
       if (gameType === 'CHICKEN') return handleChickenResume(ws, userId);
+      if (gameType === 'MINES') return handleMinesResume(ws, userId);
       return fail(ws, `RESUME is not supported for ${gameType}`);
 
     case 'CHAT':
@@ -1208,30 +1238,33 @@ export function registerSocketServer(app: FastifyInstance) {
         return fail(ws, 'Malformed JSON', 'BAD_JSON');
       }
 
-      try {
-        const meta = connectionMeta.get(ws);
-        if (!meta?.verified) {
-          return fail(ws, 'Connection is still authenticating', 'NOT_READY');
+      const handle = async () => {
+        try {
+          const meta = connectionMeta.get(ws);
+          if (!meta?.verified) {
+            return fail(ws, 'Connection is still authenticating', 'NOT_READY');
+          }
+          const username = meta.username ?? 'player';
+          await route(ws, identity.userId, msg, username);
+        } catch (err) {
+          if (err instanceof InsufficientFundsError) {
+            return fail(ws, 'Insufficient funds', 'INSUFFICIENT_FUNDS');
+          }
+          if (err instanceof AccountFrozenError) {
+            return fail(ws, 'Account is frozen', 'ACCOUNT_FROZEN');
+          }
+          if (err instanceof MaintenanceModeError) {
+            return fail(ws, err.message, 'MAINTENANCE_MODE');
+          }
+          if (err instanceof BetLimitError) {
+            return fail(ws, err.message, 'BET_LIMIT');
+          }
+          const message = err instanceof Error ? err.message : 'Internal error';
+          app.log.error({ err, userId: identity.userId }, 'socket handler error');
+          return fail(ws, message, 'HANDLER_ERROR');
         }
-        const username = meta.username ?? 'player';
-        await route(ws, identity.userId, msg, username);
-      } catch (err) {
-        if (err instanceof InsufficientFundsError) {
-          return fail(ws, 'Insufficient funds', 'INSUFFICIENT_FUNDS');
-        }
-        if (err instanceof AccountFrozenError) {
-          return fail(ws, 'Account is frozen', 'ACCOUNT_FROZEN');
-        }
-        if (err instanceof MaintenanceModeError) {
-          return fail(ws, err.message, 'MAINTENANCE_MODE');
-        }
-        if (err instanceof BetLimitError) {
-          return fail(ws, err.message, 'BET_LIMIT');
-        }
-        const message = err instanceof Error ? err.message : 'Internal error';
-        app.log.error({ err, userId: identity.userId }, 'socket handler error');
-        return fail(ws, message, 'HANDLER_ERROR');
-      }
+      };
+      return typeof msg.gameType === 'string' ? frameGame.run(msg.gameType, handle) : handle();
     });
 
     ws.on('close', () => releaseSocket(ws));

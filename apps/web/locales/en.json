@@ -630,7 +630,7 @@
     "chickenAria": "Tap the chicken to cross to the next lane",
     "chickenPlayAgain": "Play Again",
     "chickenStartRound": "Start Round",
-    "chickenHintPlaying": "Tap the chicken, or press Arrow Right / D. Cash out before the traffic gets you",
+    "chickenHintPlaying": "Tap anywhere on the road, or press Arrow Right / D. Cash out before the traffic gets you",
     "chickenHintIdle": "Cash out unlocks once a lane pays 2x or more",
     "slotsTitle": "Frigat Slots · 5 lines",
     "slotsSymbol": "Symbol",
@@ -846,5 +846,26 @@
     "ruleAbuse": "Multiple accounts or deposit-and-withdraw cycles without play forfeit bonuses.",
     "depositCta": "Deposit and get +{percent}",
     "loadError": "Could not load your bonuses."
+  },
+  "result": {
+    "win": "You win!",
+    "bigWin": "Big win!",
+    "lose": "No luck this time",
+    "bust": "Boom! Mine hit",
+    "cashedOut": "Cashed out!",
+    "rolled": "Rolled {roll} · needed {direction} {target}",
+    "under": "under",
+    "over": "over",
+    "limbo": "Hit {hit}× · target {target}×",
+    "keno": "{hits} of {picks} hit",
+    "coin": "Landed {landed} · you picked {pick}",
+    "heads": "Heads",
+    "tails": "Tails",
+    "roulette": "Ball landed on {pocket} {color}",
+    "red": "red",
+    "black": "black",
+    "green": "green",
+    "minesBust": "Round over — try again",
+    "minesCash": "{tiles} safe tiles opened"
   }
 }

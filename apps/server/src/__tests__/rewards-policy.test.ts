@@ -56,7 +56,7 @@ describe('referral commission', () => {
       stake: '100',
       payout: '198',
     });
-    expect(won?.amount).toBe('0.25000000');
+    expect(won?.amount).toBe('0.60000000');
 
     const lost = await settleAffiliateReward({
       gameType: 'DICE',
@@ -65,7 +65,7 @@ describe('referral commission', () => {
       stake: '100',
       payout: '0',
     });
-    expect(lost?.amount).toBe('0.25000000');
+    expect(lost?.amount).toBe('0.60000000');
   });
 
   it('uses 1/37 for roulette, whose edge is structural', async () => {

@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { isValidCryptoAddress } from '@frigat/shared';
 
 import {
   NowPaymentsError,
@@ -98,7 +99,7 @@ export function registerPaymentRoutes(app: FastifyInstance) {
         supported: SUPPORTED_CURRENCIES,
       });
     }
-    if (!isPlausibleAddress(address)) {
+    if (!isPlausibleAddress(address) || !isValidCryptoAddress(currency, address)) {
       return reply.code(400).send({ error: 'invalid_address' });
     }
     if (network !== undefined && typeof network !== 'string') {

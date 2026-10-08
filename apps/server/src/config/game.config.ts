@@ -29,12 +29,12 @@ export const HOUSE_EDGE: Record<GameType, number> = {
   ROULETTE: 0,
   COINFLIP: 0.025,
   PLINKO: 0.025,
-  DICE: 0.025,
-  LIMBO: 0.025,
-  KENO: 0.025,
+  DICE: 0.06,
+  LIMBO: 0.06,
+  KENO: 0.06,
   CHICKEN: 0.06,
-  AVIA: 0.06,
-  SLOTS: 0.04,
+  AVIA: 0.1,
+  SLOTS: 0.08,
 };
 
 export const ROULETTE_PAYOUTS = {

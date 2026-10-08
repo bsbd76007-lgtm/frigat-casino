@@ -2,6 +2,8 @@ import { bonusFor, wageringRemaining } from './depositBonus.service';
 import { createHash, timingSafeEqual } from 'crypto';
 import { Prisma, TransactionType, type CryptoPaymentStatus } from '@prisma/client';
 
+import { CRYPTO_CODES, cryptoSpec, isCryptoCurrency, type CryptoCurrencyCode } from '@frigat/shared';
+
 import { config } from '../config';
 import { BinancePriceError, getBinanceUsdtAskBook } from './binancePrice.service';
 import {
@@ -25,25 +27,15 @@ import {
 
 const D = Prisma.Decimal;
 
-export const SUPPORTED_CURRENCIES = ['USDT', 'BTC', 'ETH', 'LTC'] as const;
-export type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];
-
-const DEFAULT_NETWORK: Record<SupportedCurrency, string | undefined> = {
-  USDT: 'tron',
-  BTC: undefined,
-  ETH: undefined,
-  LTC: undefined,
-};
+export const SUPPORTED_CURRENCIES: readonly CryptoCurrencyCode[] = CRYPTO_CODES;
+export type SupportedCurrency = CryptoCurrencyCode;
 
 const LEDGER_CURRENCY = 'USD';
 
 export const MANUAL_PROVIDER = 'MANUAL_ADMIN';
 
 export function isSupportedCurrency(value: unknown): value is SupportedCurrency {
-  return (
-    typeof value === 'string' &&
-    (SUPPORTED_CURRENCIES as readonly string[]).includes(value)
-  );
+  return isCryptoCurrency(value);
 }
 
 export class PaymentConfigError extends Error {
@@ -254,7 +246,7 @@ export async function createDeposit(
     return createNowPaymentsDeposit(input, amount, orderId);
   }
 
-  const network = input.network ?? DEFAULT_NETWORK[input.currency];
+  const network = input.network ?? cryptoSpec(input.currency)?.cryptomusNetwork ?? undefined;
 
   const invoice = await cryptomusRequest<CryptomusInvoice>('/payment', {
     amount: amount.toFixed(2),
@@ -658,12 +650,15 @@ async function quoteWithdrawal(
   amount: Prisma.Decimal,
   currency: SupportedCurrency
 ): Promise<WithdrawalQuote> {
-  const exchangeRateSource = currency === 'USDT' ? 'USDT_PEG' : 'BINANCE';
+  const spec = cryptoSpec(currency);
+  if (!spec) throw new BinancePriceError(`Unsupported payout currency ${currency}`);
+  const decimals = spec.payoutDecimals;
+  const exchangeRateSource = spec.binanceSymbol === null ? 'USDT_PEG' : 'BINANCE';
   let payoutAmount: Prisma.Decimal;
   let exchangeRateUsdt: Prisma.Decimal;
 
-  if (currency === 'USDT') {
-    payoutAmount = amount;
+  if (spec.binanceSymbol === null) {
+    payoutAmount = amount.toDecimalPlaces(decimals, Prisma.Decimal.ROUND_DOWN);
     exchangeRateUsdt = new D(1);
   } else {
     const asks = await getBinanceUsdtAskBook(currency);
@@ -673,10 +668,10 @@ async function quoteWithdrawal(
 
     for (const ask of asks) {
       const price = new D(ask.price);
-      const levelQuantity = new D(ask.quantity).toDecimalPlaces(8, Prisma.Decimal.ROUND_DOWN);
+      const levelQuantity = new D(ask.quantity).toDecimalPlaces(decimals, Prisma.Decimal.ROUND_DOWN);
       const affordableQuantity = remainingUsdt
         .dividedBy(price)
-        .toDecimalPlaces(8, Prisma.Decimal.ROUND_DOWN);
+        .toDecimalPlaces(decimals, Prisma.Decimal.ROUND_DOWN);
       const quantity = Prisma.Decimal.min(levelQuantity, affordableQuantity);
       if (quantity.lessThanOrEqualTo(0)) break;
 
@@ -819,7 +814,7 @@ export async function createWithdrawal(
     currency: LEDGER_CURRENCY,
   });
 
-  const network = input.network ?? DEFAULT_NETWORK[input.currency];
+  const network = input.network ?? cryptoSpec(input.currency)?.cryptomusNetwork ?? undefined;
 
   const record = await prisma.withdrawal.create({
     data: {

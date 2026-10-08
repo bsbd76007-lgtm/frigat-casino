@@ -104,9 +104,9 @@ export async function verifyCommitment(
 
 const EDGE = {
   CRASH: 0.025,
-  LIMBO: 0.025,
+  LIMBO: 0.06,
   CHICKEN: 0.06,
-  AVIA: 0.06,
+  AVIA: 0.1,
 } as const;
 
 const CRASH_MAX_MULTIPLIER = 1_000_000;

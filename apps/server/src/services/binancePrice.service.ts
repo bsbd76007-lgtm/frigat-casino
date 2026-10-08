@@ -2,13 +2,9 @@ const BINANCE_API_BASE = 'https://api.binance.com/api/v3/depth';
 const REQUEST_TIMEOUT_MS = 3_000;
 const CACHE_TTL_MS = 5_000;
 
-const SYMBOLS = {
-  BTC: 'BTCUSDT',
-  ETH: 'ETHUSDT',
-  LTC: 'LTCUSDT',
-} as const;
+import { cryptoSpec } from '@frigat/shared';
 
-export type BinanceAsset = keyof typeof SYMBOLS;
+export type BinanceAsset = string;
 export interface BinanceAskLevel {
   price: string;
   quantity: string;
@@ -27,7 +23,8 @@ export async function getBinanceUsdtAskBook(asset: BinanceAsset): Promise<Binanc
   const cached = askCache.get(asset);
   if (cached && cached.expiresAt > Date.now()) return cached.asks;
 
-  const symbol = SYMBOLS[asset];
+  const symbol = cryptoSpec(asset)?.binanceSymbol;
+  if (!symbol) throw new BinancePriceError(`No Binance market for ${asset}`);
   const url = new URL(BINANCE_API_BASE);
   url.searchParams.set('symbol', symbol);
   url.searchParams.set('limit', '100');

@@ -89,6 +89,7 @@ export function useGameRound<TResult = Record<string, unknown>>(
         if (autoSettle) setBusy(false);
       }),
       subscribe('ERROR', (data) => {
+        if (typeof data.gameType === 'string' && data.gameType !== gameType) return;
         setBusy(false);
         optionsRef.current.onError?.({
           code: typeof data.code === 'string' ? data.code : '',

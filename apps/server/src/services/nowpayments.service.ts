@@ -1,30 +1,18 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import type { CryptoPaymentStatus } from '@prisma/client';
 
+import { cryptoSpec } from '@frigat/shared';
+
 import { config } from '../config';
 
 export const NOWPAYMENTS_PROVIDER = 'NOWPAYMENTS';
 
-const PAY_CURRENCY: Record<string, string> = {
-  USDT: 'usdttrc20',
-  BTC: 'btc',
-  ETH: 'eth',
-  LTC: 'ltc',
-};
-
-const NETWORK_LABEL: Record<string, string> = {
-  USDT: 'TRC-20',
-  BTC: 'Bitcoin',
-  ETH: 'ERC-20',
-  LTC: 'Litecoin',
-};
-
 export function payCurrencyFor(currency: string): string {
-  return PAY_CURRENCY[currency] ?? currency.toLowerCase();
+  return cryptoSpec(currency)?.nowPaymentsCode ?? currency.toLowerCase();
 }
 
 export function networkLabelFor(currency: string): string | null {
-  return NETWORK_LABEL[currency] ?? null;
+  return cryptoSpec(currency)?.network ?? null;
 }
 
 export function isNowPaymentsConfigured(): boolean {

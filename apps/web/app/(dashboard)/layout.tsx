@@ -63,6 +63,7 @@ function DashboardChrome({ children }: { children: ReactNode }) {
   } = useGameSocket();
   const [supportOpen, setSupportOpen] = useState(false);
   const [isNavOpen, setIsNavOpen] = useState(false);
+  const inGame = usePathname().startsWith('/games/');
 
   useEffect(
     () =>
@@ -78,11 +79,12 @@ function DashboardChrome({ children }: { children: ReactNode }) {
       <Navbar
         onMenuToggle={() => setIsNavOpen((v) => !v)}
         menuOpen={isNavOpen}
+        inGame={inGame}
       />
 
       <div className="shell">
         <Sidebar open={isNavOpen} onClose={() => setIsNavOpen(false)} />
-        <main className="dash__main">{token ? children : <SignInGate />}</main>
+        <main className={inGame ? 'dash__main dash__main--game' : 'dash__main'}>{token ? children : <SignInGate />}</main>
       </div>
 
 

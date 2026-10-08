@@ -20,6 +20,10 @@
     "./constants": {
       "types": "./dist/constants/game.constants.d.ts",
       "default": "./dist/constants/game.constants.js"
+    },
+    "./crypto": {
+      "types": "./dist/constants/crypto.constants.d.ts",
+      "default": "./dist/constants/crypto.constants.js"
     }
   },
   "files": [

@@ -17,6 +17,7 @@ import WithdrawModal from '@/components/modals/WithdrawModal';
 import AccountModal from '@/components/modals/AccountModal';
 import AuthModal from '@/components/auth/AuthModal';
 
+import { useScrollDirection } from '@/hooks/useScrollDirection';
 import { subscribeToPanels } from '@/lib/appPanels';
 
 const STATUS_CLASS: Record<string, string> = {
@@ -31,12 +32,14 @@ const STATUS_CLASS: Record<string, string> = {
 interface NavbarProps {
   onMenuToggle?: () => void;
   menuOpen?: boolean;
+  inGame?: boolean;
 }
 
-export function Navbar({ onMenuToggle, menuOpen }: NavbarProps) {
+export function Navbar({ onMenuToggle, menuOpen, inGame = false }: NavbarProps) {
   const { balance, socket, setFairnessOpen, token, setToken } = useGameSocket();
   const { t } = useLanguage();
   const router = useRouter();
+  const visible = useScrollDirection();
 
   const [walletOpen, setWalletOpen] = useState(false);
   const [walletTab, setWalletTab] = useState<WalletTab>('deposit');
@@ -66,7 +69,13 @@ export function Navbar({ onMenuToggle, menuOpen }: NavbarProps) {
   };
 
   return (
-    <header className="dash__header">
+    <header
+      className={
+        inGame
+          ? `dash__header dash__header--game${visible ? '' : ' dash__header--tucked'}`
+          : 'dash__header'
+      }
+    >
       <button
         type="button"
         className="dash__burger"
@@ -147,7 +156,7 @@ export function Navbar({ onMenuToggle, menuOpen }: NavbarProps) {
 
             <button
               type="button"
-              className="dash__btn"
+              className="dash__btn dash__btn--fair"
               onClick={() => setFairnessOpen(true)}
             >
               {t('header.provablyFair')}

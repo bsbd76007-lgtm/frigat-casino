@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { cryptoSpec, isValidCryptoAddress } from '@frigat/shared/crypto';
+
 import { useGameSocket } from '@/components/providers/GameSocketProvider';
 import { CurrencyGrid, paymentEndpoint, type CurrencyCode } from '@/components/modals/CurrencyGrid';
 
 import { apiJson, ApiError } from '@/lib/api';
 import { showToast } from '@/lib/toast';
-import { formatDecimalString } from '@/lib/decimal';
+import { compareDecimal, formatDecimalString, isDecimalString } from '@/lib/decimal';
 import { useLanguage } from '@/components/providers/LanguageProvider';
 
 interface WithdrawalResult {
@@ -26,11 +28,17 @@ interface WithdrawalResult {
 
 const AMOUNT_PATTERN = /^\d{1,10}(\.\d{1,8})?$/;
 
-function addressLooksValid(value: string): boolean {
-  return value.length >= 20 && value.length <= 128 && /^[a-zA-Z0-9:_-]+$/.test(value);
+function addressLooksValid(currency: CurrencyCode, value: string): boolean {
+  return value.length >= 20 && value.length <= 128 && isValidCryptoAddress(currency, value);
 }
 
-const MIN_WITHDRAWAL = 10;
+const MIN_WITHDRAWAL = '10';
+
+function formatRate(rate: string): string {
+  if (!isDecimalString(rate)) return rate;
+  const digits = compareDecimal(rate, '100') >= 0 ? 2 : compareDecimal(rate, '1') >= 0 ? 4 : 6;
+  return formatDecimalString(rate, digits);
+}
 
 function messageForError(err: unknown): string {
   if (!(err instanceof ApiError)) {
@@ -83,17 +91,20 @@ export default function WithdrawModal({
   const available = balance.balance;
 
   const amountValid = useMemo(
-    () => AMOUNT_PATTERN.test(amount) && Number(amount) > 0,
+    () => AMOUNT_PATTERN.test(amount) && compareDecimal(amount, '0') > 0,
     [amount]
   );
-  const addressValid = useMemo(() => addressLooksValid(address.trim()), [address]);
+  const addressValid = useMemo(
+    () => addressLooksValid(currency, address.trim()),
+    [currency, address]
+  );
 
   const exceedsBalance = useMemo(() => {
-    if (!amountValid || available === null) return false;
-    return Number(amount) > Number(available);
+    if (!amountValid || available === null || !isDecimalString(available)) return false;
+    return compareDecimal(amount, available) > 0;
   }, [amount, amountValid, available]);
 
-  const belowMinimum = amountValid && Number(amount) < MIN_WITHDRAWAL;
+  const belowMinimum = amountValid && compareDecimal(amount, MIN_WITHDRAWAL) < 0;
 
   const canSubmit =
     amountValid &&
@@ -152,10 +163,10 @@ export default function WithdrawModal({
             {result.review
               ? ` $${formatDecimalString(result.amount, 2)} ${result.amountCurrency} is reserved. ${
                   result.payoutAmount
-                    ? `Estimated payout: ${result.payoutAmount} ${result.currency} at ${formatDecimalString(result.exchangeRateUsdt ?? '1', 2)} USDT per ${result.currency}.`
+                    ? `Estimated payout: ${result.payoutAmount} ${result.currency} at ${formatRate(result.exchangeRateUsdt ?? '1')} USDT per ${result.currency}.`
                     : `An administrator will determine the ${result.currency} payout amount because a current quote was unavailable.`
                 }`
-              : ` $${formatDecimalString(result.amount, 2)} ${result.amountCurrency} has been reserved. Payout: ${result.payoutAmount} ${result.currency} at ${formatDecimalString(result.exchangeRateUsdt ?? '1', 2)} USDT per ${result.currency}.`}
+              : ` $${formatDecimalString(result.amount, 2)} ${result.amountCurrency} has been reserved. Payout: ${result.payoutAmount} ${result.currency} at ${formatRate(result.exchangeRateUsdt ?? '1')} USDT per ${result.currency}.`}
           </span>
         </div>
 
@@ -219,7 +230,7 @@ export default function WithdrawModal({
 
       <div className="wal__field">
         <label className="wal__label" htmlFor="withdraw-address">
-          {currency} wallet address
+          {currency} ({cryptoSpec(currency)?.network}) wallet address
         </label>
         <input
           id="withdraw-address"

@@ -1502,7 +1502,7 @@ html[data-theme='light'] .wal__input {
   border-color: rgba(59, 124, 255, .5);
 }
 
-.wal__currencies { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.wal__currencies { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .wal__cur {
   display: flex;
   flex-direction: column;
@@ -1639,7 +1639,7 @@ html[data-theme='light'] .wal__input {
 .wal__error { margin: 8px 0 0; font-size: 12px; color: var(--fg-red); }
 
 @media (max-width: 420px) {
-  .wal__currencies, .wal__quick { grid-template-columns: repeat(2, 1fr); }
+  .wal__quick { grid-template-columns: repeat(2, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
   .wal__overlay, .wal__panel { animation: none; }
@@ -2030,9 +2030,17 @@ html[data-theme='light'] .wal__input {
     visibility: visible;
     background: none;
     padding: 6px 0 0;
-    flex-direction: row;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
   }
-  .tile__play, .tile__demo { max-width: none; flex: 1; }
+  .tile__play, .tile__demo {
+    max-width: none;
+    padding: 8px 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .tile:hover { transform: none; }
@@ -3908,4 +3916,44 @@ html[data-theme='light'] .auth {
   .auth .auth__input,
   .auth .auth__submit,
   .auth__gbtn { transition: none; }
+}
+
+@media (max-width: 900px) {
+  .dash__header--game {
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 4px 8px;
+    min-height: 44px;
+    transition: transform .22s var(--fg-ease), background-color .28s ease, border-color .28s ease;
+  }
+  .dash__header--tucked { transform: translateY(-100%); }
+  .dash__header--game .hsearch,
+  .dash__header--game .dash__word,
+  .dash__header--game .lang,
+  .dash__header--game .theme,
+  .dash__header--game .dash__status,
+  .dash__header--game .dash__btn--fair { display: none; }
+  .dash__header--game .dash__right { flex-wrap: nowrap; gap: 8px; margin-left: auto; }
+  .dash__header--game .dash__balance--action { padding: 2px 10px; }
+  .dash__header--game .dash__cta { padding: 8px 12px; }
+
+  .dash__main--game { padding: 8px 8px calc(24px + env(safe-area-inset-bottom)); }
+  .dash__main--game .neu { padding: 8px; border-radius: var(--fg-r-lg); }
+  .dash__main--game .game__head { margin-bottom: 8px; }
+  .dash__main--game .game__title { font-size: 17px; }
+  .dash__main--game .game__sub { display: none; }
+  .dash__main--game .game__history { margin-bottom: 8px; }
+  .dash__main--game .game__grid { gap: 10px; }
+  .dash__main--game .game__stage { padding: 8px; }
+  .dash__main--game .stage__center { min-height: 200px; gap: 10px; }
+
+  .game__panel .fg-bet { order: -1; }
+  .game__panel .fg-bet__label { display: none; }
+  .game__panel .fg-bet__action { order: -1; min-height: 52px; font-size: 17px; }
+  .game__panel .fg-bet__input { min-height: 44px; font-size: 16px; }
+  .game__panel .fg-bet__mod { min-height: 44px; }
+  .game__panel .opt__chip { min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dash__header--game { transition: none; }
 }

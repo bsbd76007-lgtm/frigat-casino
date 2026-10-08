@@ -1,19 +1,16 @@
 'use client';
 
+import { CRYPTO_CURRENCIES, type CryptoCurrencyCode } from '@frigat/shared/crypto';
+
 import { API_URL } from '@/lib/token';
 
 export function paymentEndpoint(path: string): string {
   return `${API_URL}${path}`;
 }
 
-export const CURRENCIES = [
-  { code: 'USDT', label: 'Tether', network: 'TRON' },
-  { code: 'BTC', label: 'Bitcoin', network: 'Bitcoin' },
-  { code: 'ETH', label: 'Ethereum', network: 'ERC-20' },
-  { code: 'LTC', label: 'Litecoin', network: 'Litecoin' },
-] as const;
+export const CURRENCIES = CRYPTO_CURRENCIES;
 
-export type CurrencyCode = (typeof CURRENCIES)[number]['code'];
+export type CurrencyCode = CryptoCurrencyCode;
 
 export function CurrencyGrid({
   value,

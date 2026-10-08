@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 
+import { cryptoSpec } from '@frigat/shared/crypto';
+
 import { useGameSocket } from '@/components/providers/GameSocketProvider';
 import { CurrencyGrid, paymentEndpoint, type CurrencyCode } from '@/components/modals/CurrencyGrid';
 import { RadarLoader } from '@/components/common/RadarLoader';
@@ -55,13 +57,8 @@ function messageForDepositError(err: unknown): string {
 
 const QUICK_AMOUNTS = ['10', '25', '50', '100'] as const;
 
-const URI_SCHEME: Partial<Record<CurrencyCode, string>> = {
-  BTC: 'bitcoin',
-  LTC: 'litecoin',
-};
-
 function paymentUri(currency: CurrencyCode, address: string, amount: string): string {
-  const scheme = URI_SCHEME[currency];
+  const scheme = cryptoSpec(currency)?.uriScheme;
   return scheme ? `${scheme}:${address}?amount=${amount}` : address;
 }
 

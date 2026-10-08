@@ -6,11 +6,14 @@ import { useRef, useState } from 'react';
 import { CoinflipCanvas, type CoinFlight } from '@/components/canvas/CoinflipCanvas';
 import { BetControls } from '@/components/games/BetControls';
 import { GameShell } from '@/components/games/GameShell';
+import { RoundResult } from '@/components/games/RoundResult';
 import { useGameSocket } from '@/components/providers/GameSocketProvider';
 import { useLanguage } from '@/components/providers/LanguageProvider';
 import { useGameRound } from '@/hooks/useGameRound';
 
 type CoinSide = 'HEADS' | 'TAILS';
+
+const COIN_PAYS = 1.98;
 
 interface Flip extends CoinFlight {
   payout: string | null;
@@ -75,14 +78,17 @@ export default function CoinflipPage() {
           </div>
 
           {complete && flip && (
-            <>
-              <div className={`readout ${flip.win ? 'readout--win' : 'readout--lose'}`}>
-                {flip.win ? `+${flip.payout ?? '0'}` : 'No win'}
-              </div>
-              <p className="readout__note" role="status">
-                Landed {flip.landed} · you picked {flip.pick}
-              </p>
-            </>
+            <RoundResult
+              key={flip.id}
+              win={flip.win}
+              payout={flip.payout}
+              currency={balance.currency}
+              multiplier={flip.win ? COIN_PAYS : null}
+              detail={t('result.coin', {
+                landed: t(flip.landed === 'HEADS' ? 'result.heads' : 'result.tails'),
+                pick: t(flip.pick === 'HEADS' ? 'result.heads' : 'result.tails'),
+              })}
+            />
           )}
         </div>
       }
@@ -108,7 +114,7 @@ export default function CoinflipPage() {
 
           <div className="opt__stat">
             <span>{t('game.payoutOnWin')}</span>
-            <b>1.98×</b>
+            <b>{COIN_PAYS.toFixed(2)}×</b>
           </div>
 
           <BetControls

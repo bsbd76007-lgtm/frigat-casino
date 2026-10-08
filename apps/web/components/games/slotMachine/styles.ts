@@ -120,5 +120,12 @@ export const CSS = `
   font-weight: 700; }
 .slot__paytable-val { text-align: right; color: var(--fg-muted); }
 .slot__foot { margin: 0; font-size: 10px; line-height: 1.5; color: var(--fg-line-2); }
+@media (max-width: 1023px) {
+  .slot { gap: 10px; padding: 0; }
+  .slot__panel { gap: 12px; padding: 12px; }
+  .slot__spin { order: -2; min-height: 56px; }
+  .slot__error { order: -1; }
+  .slot__input { min-height: 44px; font-size: 16px; }
+}
 `;
 

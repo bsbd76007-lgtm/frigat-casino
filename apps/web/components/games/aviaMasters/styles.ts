@@ -131,5 +131,33 @@ export const CSS = `
   border: 1px solid color-mix(in srgb, var(--fg-pos) 30%, transparent); }
 .avia__chip--bad { background: rgba(239,68,68,.12); color: #d69199;
   border-color: rgba(239,68,68,.3); }
+@media (max-width: 1023px) {
+  .avia { gap: 10px; padding: 0; }
+  .avia__action, .avia__standing { order: -2; }
+  .avia__action { min-height: 56px; }
+  .avia__error { order: -1; }
+  .avia__input { min-height: 44px; font-size: 16px; }
+  .avia__mod { min-height: 44px; }
+  .avia__panel { gap: 12px; }
+  .avia__speed { min-height: 44px; }
+}
+@media (max-width: 640px) {
+  .avia__stage { aspect-ratio: 4 / 3; }
+  .avia__hud { left: 6px; right: 6px; top: 6px; display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .avia__tile { min-width: 0; padding: 4px 6px; border-radius: var(--fg-r); }
+  .avia__tile-label { font-size: 8.5px; letter-spacing: .06em; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .avia__tile-value { margin-top: 0; font-size: 12.5px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .avia__banner { width: max-content; max-width: calc(100% - 32px); padding: 8px 12px;
+    font-size: 15px; }
+  .avia__hint { left: 8px; right: 8px; bottom: 6px; font-size: 10px; text-align: center; }
+  .avia__inputs { gap: 6px; }
+  .avia__speeds { gap: 6px; }
+  .avia__safe { padding: 8px 10px; }
+  .avia__spots, .avia__legend { gap: 4px; }
+  .avia__spot, .avia__chip { padding: 4px 2px; font-size: 10.5px; }
+}
 `;
 

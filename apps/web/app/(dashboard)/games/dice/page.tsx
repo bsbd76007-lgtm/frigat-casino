@@ -5,6 +5,7 @@ import { useMemo, useRef, useState } from 'react';
 import { DiceCanvas } from '@/components/canvas/DiceCanvas';
 import { BetControls } from '@/components/games/BetControls';
 import { GameShell } from '@/components/games/GameShell';
+import { RoundResult } from '@/components/games/RoundResult';
 import { useGameSocket } from '@/components/providers/GameSocketProvider';
 import { useLanguage } from '@/components/providers/LanguageProvider';
 import { useGameRound } from '@/hooks/useGameRound';
@@ -20,7 +21,12 @@ interface DiceRound {
   direction: Direction;
 }
 
-const DICE_EDGE = 0.01;
+const DICE_EDGE = 0.06;
+
+function quoteFor(target: number, direction: Direction): number {
+  const chance = direction === 'UNDER' ? target : 100 - target;
+  return Math.floor((100 / chance) * (1 - DICE_EDGE) * 100) / 100;
+}
 
 export default function DicePage() {
   const { balance } = useGameSocket();
@@ -50,11 +56,13 @@ export default function DicePage() {
     },
   });
 
-  const { winChance, quote } = useMemo(() => {
-    const chance = direction === 'UNDER' ? target : 100 - target;
-    const raw = (100 / chance) * (1 - DICE_EDGE);
-    return { winChance: chance, quote: Math.floor(raw * 100) / 100 };
-  }, [target, direction]);
+  const { winChance, quote } = useMemo(
+    () => ({
+      winChance: direction === 'UNDER' ? target : 100 - target,
+      quote: quoteFor(target, direction),
+    }),
+    [target, direction]
+  );
 
   return (
     <GameShell
@@ -78,10 +86,18 @@ export default function DicePage() {
           </div>
 
           {complete && round ? (
-            <p className="readout__note" role="status">
-              {round.win ? `Win · +${round.payout ?? '0'}` : 'No win'} · rolled{' '}
-              {round.direction === 'UNDER' ? 'under' : 'over'} {round.target}
-            </p>
+            <RoundResult
+              key={round.id}
+              win={round.win}
+              payout={round.payout}
+              currency={balance.currency}
+              multiplier={round.win ? quoteFor(round.target, round.direction) : null}
+              detail={t('result.rolled', {
+                roll: round.roll.toFixed(2),
+                direction: t(round.direction === 'UNDER' ? 'result.under' : 'result.over'),
+                target: round.target,
+              })}
+            />
           ) : (
             <p className="readout__note">
               {busy ? 'Rolling…' : 'Set your target and roll'}

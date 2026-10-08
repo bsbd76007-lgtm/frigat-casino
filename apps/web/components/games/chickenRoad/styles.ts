@@ -14,6 +14,9 @@ export const CSS = `
   border-radius: var(--fg-r-lg); overflow: hidden;
   --chr-chick-x: 0px; --chr-chick-y: 0px; }
 .chr__canvas { display: block; width: 100%; height: 100%; }
+.chr__stage { touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none; }
+@media (pointer: coarse) { .chr__stage--tappable { cursor: pointer; } }
 
 .chr__chick { position: absolute; left: var(--chr-chick-x); top: var(--chr-chick-y);
   width: 76px; height: 76px; margin: -38px 0 0 -38px; padding: 0;
@@ -132,5 +135,12 @@ export const CSS = `
 .chr__action--cash { color: #2a1a03; background: var(--fg-gold); }
 .chr__action--cash:hover:not(:disabled) { background: var(--fg-gold-soft); }
 .chr__hint { margin: 0; font-size: 11.5px; line-height: 1.5; text-align: center; color: var(--fg-dim); }
+@media (max-width: 1023px) {
+  .chr { gap: 10px; padding: 0; }
+  .chr__panel { gap: 12px; padding: 12px; }
+  .chr__actions { order: -2; }
+  .chr__banner, .chr__error { order: -1; }
+  .chr__action { height: 56px; }
+}
 `;
 

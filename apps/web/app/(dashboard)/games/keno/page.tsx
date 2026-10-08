@@ -12,6 +12,7 @@ import {
 import { KenoCanvas } from '@/components/canvas/KenoCanvas';
 import { BetControls } from '@/components/games/BetControls';
 import { GameShell } from '@/components/games/GameShell';
+import { RoundResult } from '@/components/games/RoundResult';
 import { useGameSocket } from '@/components/providers/GameSocketProvider';
 import { useLanguage } from '@/components/providers/LanguageProvider';
 import { useGameRound } from '@/hooks/useGameRound';
@@ -147,10 +148,13 @@ export default function KenoPage() {
           />
 
           {won !== null ? (
-            <p className="readout__note" role="status" style={{ textAlign: 'center', marginTop: 14 }}>
-              {hitCount} of {settledPickCount} hit ·{' '}
-              {won ? `Win · +${payout ?? '0'}` : 'No win'}
-            </p>
+            <RoundResult
+              win={won}
+              payout={payout}
+              currency={balance.currency}
+              multiplier={won && hitCount !== null ? settledPaytable?.[hitCount] ?? null : null}
+              detail={t('result.keno', { hits: hitCount ?? 0, picks: settledPickCount ?? 0 })}
+            />
           ) : (
             <p className="readout__note" style={{ textAlign: 'center', marginTop: 14 }}>
               {busy

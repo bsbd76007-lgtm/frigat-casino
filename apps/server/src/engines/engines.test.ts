@@ -1,3 +1,4 @@
+import { CRYPTO_CODES, CRYPTO_CURRENCIES, isValidCryptoAddress } from '@frigat/shared';
 import assert from 'assert';
 import { describe, it } from 'vitest';
 import { createHmac } from 'crypto';
@@ -472,5 +473,38 @@ describe('NOWPayments IPN', () => {
   assert.equal(payCurrencyFor('BTC'), 'btc');
   assert.equal(payCurrencyFor('ETH'), 'eth');
   assert.equal(payCurrencyFor('LTC'), 'ltc');
+  assert.equal(payCurrencyFor('USDC'), 'usdc');
+  assert.equal(payCurrencyFor('SOL'), 'sol');
+  assert.equal(payCurrencyFor('TRX'), 'trx');
+  assert.equal(payCurrencyFor('BNB'), 'bnbbsc');
+  assert.equal(payCurrencyFor('DOGE'), 'doge');
+});
+  it('withdrawal addresses must match the chosen coin', () => {
+  const valid: Record<string, string> = {
+    USDT: 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE',
+    TRX: 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE',
+    BTC: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+    ETH: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+    USDC: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+    BNB: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+    LTC: 'ltc1qg82tqcyfwqzxkr4l5ylxa7jgm7qrqyhh0qpmyx',
+    SOL: '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV',
+    DOGE: 'DH5yaieqoZN36fDVciNyRueRGvGLR3mr7L',
+  };
+  for (const code of CRYPTO_CODES) {
+    assert.ok(isValidCryptoAddress(code, valid[code]), `${code} accepts its own address`);
+  }
+  assert.equal(isValidCryptoAddress('ETH', valid.BTC), false);
+  assert.equal(isValidCryptoAddress('BTC', valid.ETH), false);
+  assert.equal(isValidCryptoAddress('USDT', valid.ETH), false);
+  assert.equal(isValidCryptoAddress('DOGE', valid.LTC), false);
+  assert.equal(isValidCryptoAddress('XRP', valid.ETH), false);
+});
+  it('every coin has a Binance market except the USDT quote asset', () => {
+  for (const spec of CRYPTO_CURRENCIES) {
+    if (spec.code === 'USDT') assert.equal(spec.binanceSymbol, null);
+    else assert.equal(spec.binanceSymbol, `${spec.code}USDT`);
+    assert.ok(spec.payoutDecimals >= 6 && spec.payoutDecimals <= 8);
+  }
 });
 });

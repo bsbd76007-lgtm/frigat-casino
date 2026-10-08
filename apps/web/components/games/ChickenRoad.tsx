@@ -687,7 +687,13 @@ export default function ChickenRoad() {
 
   return (
     <div className="chr neu">
-      <div className="chr__stage" ref={stageRef}>
+      <div
+        className={`chr__stage${canStep ? ' chr__stage--tappable' : ''}`}
+        ref={stageRef}
+        onPointerUp={(event) => {
+          if (event.pointerType !== 'mouse') advance();
+        }}
+      >
         <canvas ref={canvasRef} className="chr__canvas" />
 
         <div className="chr__hud">

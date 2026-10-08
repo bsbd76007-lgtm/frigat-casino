@@ -5,13 +5,14 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { LimboCanvas, type LimboRound } from '@/components/canvas/LimboCanvas';
 import { BetControls } from '@/components/games/BetControls';
 import { GameShell } from '@/components/games/GameShell';
+import { RoundResult } from '@/components/games/RoundResult';
 import { useGameSocket } from '@/components/providers/GameSocketProvider';
 import { useLanguage } from '@/components/providers/LanguageProvider';
 import { useGameRound } from '@/hooks/useGameRound';
 
 const MIN_TARGET = 1.01;
 const MAX_TARGET = 1_000_000;
-const LIMBO_EDGE = 0.01;
+const LIMBO_EDGE = 0.06;
 
 const QUICK_TARGETS = [1.5, 2, 5, 10, 100];
 
@@ -93,10 +94,17 @@ export default function LimboPage() {
           </div>
 
           {complete && round ? (
-            <p className="readout__note" role="status">
-              {round.win ? `Win · +${round.payout ?? '0'}` : 'No win'} · target was{' '}
-              {formatMultiplier(round.settledTarget)}x
-            </p>
+            <RoundResult
+              key={round.id}
+              win={round.win}
+              payout={round.payout}
+              currency={balance.currency}
+              multiplier={round.win ? round.settledTarget : null}
+              detail={t('result.limbo', {
+                hit: formatMultiplier(round.achievedMultiplier),
+                target: formatMultiplier(round.settledTarget),
+              })}
+            />
           ) : (
             <p className="readout__note">
               {busy ? 'Rolling…' : 'Set your target and roll'}

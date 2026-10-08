@@ -9,9 +9,12 @@ import {
 } from '@/components/canvas/RouletteCanvas';
 import { BetControls } from '@/components/games/BetControls';
 import { GameShell } from '@/components/games/GameShell';
+import { RoundResult, RouletteBall } from '@/components/games/RoundResult';
 import { useGameSocket } from '@/components/providers/GameSocketProvider';
 import { useLanguage } from '@/components/providers/LanguageProvider';
 import { useGameRound } from '@/hooks/useGameRound';
+
+const STRAIGHT_PAYS = 36;
 
 const POSITIONS: Array<{ id: string; label: string; pays: string }> = [
   { id: 'red', label: 'Red', pays: '2×' },
@@ -38,15 +41,19 @@ export default function RoulettePage() {
   const [phase, setPhase] = useState<RoulettePhase>('IDLE');
   const [pocket, setPocket] = useState<number | null>(null);
   const [lastWin, setLastWin] = useState<boolean | null>(null);
-  const pendingRef = useRef<{ pocket: number; win: boolean } | null>(null);
+  const [lastPayout, setLastPayout] = useState<string | null>(null);
+  const [lastPays, setLastPays] = useState<number | null>(null);
+  const pendingRef = useRef<{ pocket: number; win: boolean; payout: string | null } | null>(
+    null
+  );
   const [heldBalance, setHeldBalance] = useState<string | null>(null);
 
   const { busy, bet, settle } = useGameRound<{ pocket?: number }>('ROULETTE', {
     autoSettle: false,
-    onResult: ({ result, win }) => {
+    onResult: ({ result, win, payout }) => {
       if (typeof result?.pocket !== 'number') return;
 
-      pendingRef.current = { pocket: result.pocket, win };
+      pendingRef.current = { pocket: result.pocket, win, payout };
       setPocket(result.pocket);
     },
     onError: () => {
@@ -63,6 +70,7 @@ export default function RoulettePage() {
     pendingRef.current = null;
     if (settled) {
       setLastWin(settled.win);
+      setLastPayout(settled.payout);
       setPhase('RESULT');
     }
     setHeldBalance(null);
@@ -73,6 +81,12 @@ export default function RoulettePage() {
     setPhase('SPINNING');
     setPocket(null);
     setLastWin(null);
+    setLastPayout(null);
+    setLastPays(
+      activePosition.startsWith('straight:')
+        ? STRAIGHT_PAYS
+        : Number.parseFloat(POSITIONS.find((p) => p.id === activePosition)?.pays ?? '') || null
+    );
     pendingRef.current = null;
     setHeldBalance(balance.balance);
     bet('SPIN', {
@@ -96,19 +110,17 @@ export default function RoulettePage() {
             size={380}
           />
           {phase === 'RESULT' && pocket !== null && !busy && (
-            <p
-              className={`readout__note${lastWin ? '' : ''}`}
-              role="status"
-              style={{
-                textAlign: 'center',
-                marginTop: 10,
-                color: lastWin ? 'var(--fg-accent)' : 'var(--fg-red)',
-                fontWeight: 600,
-              }}
-            >
-              {pocket} {pocketColor(pocket).toLowerCase()} —{' '}
-              {lastWin ? 'you win' : 'no win'}
-            </p>
+            <RoundResult
+              win={Boolean(lastWin)}
+              payout={lastPayout}
+              currency={balance.currency}
+              multiplier={lastWin ? lastPays : null}
+              badge={<RouletteBall pocket={pocket} color={pocketColor(pocket)} />}
+              detail={t('result.roulette', {
+                pocket,
+                color: t(`result.${pocketColor(pocket).toLowerCase()}`),
+              })}
+            />
           )}
         </>
       }
